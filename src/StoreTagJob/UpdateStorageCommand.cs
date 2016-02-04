@@ -39,34 +39,17 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             var txInfo = txTable.GetSystemInfo();
 
-            //var sourceAzid = this.Source.AzureId();
+            var operation = this.TagTransaction.OperationValue;
 
-            //var sourceTx = txTable.GetTagSourceTransactions(sourceAzid)
-            //    .Where(t => t.Stored == null)
-            //    .FirstOrDefault();
+            switch (operation)
+            {
+                case TagTransactionOperation.Create:
+                    await this.CreateTag();
+                    break;
 
-            //if (sourceTx == null)
-            //{
-            //    Console.WriteLine("No update storage transactions to process for tag source: {0}", this.Source.Uri);
-
-            //    return this.DidWork = false;
-            //}
-
-            //var sourcesDirectory = this.GetTagSourceDirectory(sourceAzid);
-
-            //var indexedJsonTagTask = this.GetIndexSoftwareIdentity(sourcesDirectory, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd);
-
-            //var indexedXmlTagTask = this.GetIndexSoftwareIdentity(sourcesDirectory, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml);
-
-            //var tagTransactions = txTable.GetTagsInTransactions(sourceTx.TransactionId).ToList();
-
-            //var indexedJsonTag = await indexedJsonTagTask;
-
-            //var indexedXmlTag = await indexedXmlTagTask;
-
-            //await this.ProcessTransactions(sourceAzid, sourcesDirectory, tagTransactions, indexedJsonTag, indexedXmlTag);
-
-            //Console.WriteLine("Waiting for storage prcoessing to complete.");
+                default:
+                    throw new NotImplementedException();
+            }
 
             var txBatch = txTable.Change();
 
@@ -81,6 +64,25 @@ namespace AppSyndication.WebJobs.StoreTagJob
             Console.WriteLine("Tag storage updated.");
 
             return this.DidWork = true;
+        }
+
+        private async Task CreateTag()
+        {
+            var redirectsTable = this.Connection.DownloadRedirectsTable();
+
+            var tagEntity = this.CreateTagEntityFromSoftwareIdentity(tagTx, softwareIdentity);
+
+            var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(sourceAzid, tagEntity.TagAzid, tagEntity.Uid, softwareIdentity);
+
+            var tagUris = await WriteVersionedTag(sourceDirectory, tagEntity, softwareIdentity);
+
+            tagEntity.BlobJsonUri = tagUris.JsonUri.AbsoluteUri;
+
+            tagEntity.BlobXmlUri = tagUris.XmlUri.AbsoluteUri;
+
+            var primaryTag = tagEntity.AsPrimary();
+
+            return new AddedTagResult() { NewSourceUris = tagUris, Redirects = redirects, Tag = tagEntity, PrimaryTag = primaryTag };
         }
 
         private async Task ProcessTransactions(string sourceAzid, CloudBlobDirectory sourceDirectory, IEnumerable<TagTransactionEntity> tagTransactions, SoftwareIdentity indexJsonTag, SoftwareIdentity indexXmlTag)
@@ -466,32 +468,65 @@ namespace AppSyndication.WebJobs.StoreTagJob
             return await blob.DownloadTextAsync();
         }
 
-        private static readonly string PlaceholderDescription = "Placeholder text follows. This is where there would be a description about the application and what it does. How about a bit more text to make it more of a paragraph rather than just a sentence.";
-        private static readonly string PlaceholderKeywords = "placeholder1, placeholder2, placeholder three";
-        private static readonly string PlaceholderVersion = "0.0.0.0";
+        private const string PlaceholderDescription = "Placeholder text follows. This is where there would be a description about the application and what it does. How about a bit more text to make it more of a paragraph rather than just a sentence.";
+        private const string PlaceholderVersion = "0.0.0.0";
 
-        private TagEntity CreateTagEntityFromSoftwareIdentity(string sourceAzid, TagTransactionEntity tagTx, SoftwareIdentity SoftwareIdentity)
+        private TagEntity CreateTagEntityFromSoftwareIdentity(string channel, string alias, SoftwareIdentity swidtag)
         {
-            Debug.Assert(tagTx.TagId == SoftwareIdentity.TagId);
+            var name = swidtag.Name;
+            var version = String.IsNullOrEmpty(swidtag.Version) ? PlaceholderVersion : swidtag.Version;
+            var revision = swidtag.TagVersion;
+            var media = swidtag.AppliesToMedia;
 
-            var description = PlaceholderDescription;
-            var keywordText = PlaceholderKeywords;
-            var version = String.IsNullOrEmpty(SoftwareIdentity.Version) ? PlaceholderVersion : SoftwareIdentity.Version;
+            string description = null;
+            string keywordText = null;
+            string logoUri = null;
 
-            var meta = SoftwareIdentity.Meta.FirstOrDefault();
-
-            if (meta != null)
+            foreach (var meta in swidtag.Meta)
             {
-                description = meta.Description ?? PlaceholderDescription;
-                keywordText = meta["keyword"] ?? PlaceholderKeywords;
+                if (String.IsNullOrEmpty(alias))
+                {
+                    alias = meta["alias"];
+                }
+
+                if (String.IsNullOrEmpty(description))
+                {
+                    description = meta.Description;
+                }
+
+                if (String.IsNullOrEmpty(keywordText))
+                {
+                    keywordText = meta["keyword"];
+                }
             }
 
-            var keywords = keywordText.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToArray();
+            if (String.IsNullOrEmpty(name))
+            {
+                throw new StoreTagJobException("An name is required. Add an name attribute to SoftwareIdentity element.");
+            }
 
-            //var links
-            var logoUri = String.Empty; // link["logoUri"];
+            if (String.IsNullOrEmpty(alias))
+            {
+                throw new StoreTagJobException("An alias is required. Add an alias attribute to Meta element or specify an alias when uploading the tag.");
+            }
 
-            return new TagEntity(sourceAzid, SoftwareIdentity.TagId, version, tagTx.Alias, tagTx.Title, description, keywords, tagTx.Fingerprint, tagTx.Updated);
+            foreach (var link in swidtag.Links)
+            {
+                if (String.IsNullOrEmpty(logoUri) && link.Relationship == "logoUri")
+                {
+                    logoUri = link.HRef.AbsoluteUri;
+                }
+            }
+
+            var entity = new TagEntity(channel, alias, swidtag.TagId, version, revision, media)
+            {
+                Description = description ?? PlaceholderDescription,
+                LogoUri = logoUri,
+                Keywords = keywordText?.Split(new[] { ' ', '\t', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToArray(),
+                Name = name,
+            };
+
+            return entity;
         }
 
         private static List<DownloadRedirectEntity> UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(string sourceAzid, string tagAzid, string tagUid, SoftwareIdentity SoftwareIdentity)

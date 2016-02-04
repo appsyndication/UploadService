@@ -9,7 +9,7 @@ using Microsoft.Azure.WebJobs.Host;
 
 namespace AppSyndication.WebJobs.StoreTagJob
 {
-    public class Program
+    public static class Program
     {
         public static Connection Connection { get; set; }
 

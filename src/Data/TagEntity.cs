@@ -22,7 +22,8 @@ namespace AppSyndication.WebJobs.Data
             this.TagId = tagId;
             this.Version = version;
             this.Revision = revision;
-            this.Stored = stored.HasValue ? stored.Value : DateTime.UtcNow;
+            this.Media = media;
+            this.Stored = stored ?? DateTime.UtcNow;
         }
 
         public string Uid => this.PartitionKey;
@@ -44,6 +45,8 @@ namespace AppSyndication.WebJobs.Data
         public string[] Keywords { get; set; }
 
         public string LogoUri { get; set; }
+
+        public string Media { get; set; }
 
         public string Revision { get; set; }
 

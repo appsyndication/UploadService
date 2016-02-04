@@ -5,6 +5,7 @@ namespace AppSyndication.WebJobs.Data
 {
     public enum TagTransactionOperation
     {
+        Unknown,
         Error,
         Create,
         Update,
@@ -41,12 +42,18 @@ namespace AppSyndication.WebJobs.Data
 
         public DateTime? Updated { get; set; }
 
+        public TagTransactionOperation OperationValue
+        {
+            get
+            {
+                TagTransactionOperation operation;
+                return Enum.TryParse<TagTransactionOperation>(this.Operation, out operation) ? operation : TagTransactionOperation.Unknown;
+            }
+        }
+
         public bool TryUpdateOperation(TagTransactionOperation operation)
         {
-            TagTransactionOperation existingOperation;
-
-            if (!Enum.TryParse<TagTransactionOperation>(this.Operation, out existingOperation) ||
-                existingOperation != operation)
+            if (this.OperationValue != operation)
             {
                 this.Operation = operation.ToString();
                 return true;

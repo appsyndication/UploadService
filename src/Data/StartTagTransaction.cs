@@ -57,7 +57,7 @@ namespace AppSyndication.WebJobs.Data
 
         public async Task CompleteAsync()
         {
-            this.Entity.Staged = DateTime.UtcNow;
+            this.Entity.Stored = DateTime.UtcNow;
 
             var change = this.Connection.TransactionTable().Change();
 
