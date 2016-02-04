@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PublishJobFolder Condition="'$(PublishFolder)'!=''">$(PublishFolder)</PublishJobFolder>
+    <PublishJobFolder Condition="'$(PublishJobFolder)'!='' and !HasTrailingSlash('$(PublishJobFolder)')">$(PublishJobFolder)\</PublishJobFolder>
+    <PublishJobFolder Condition="'$(PublishJobFolder)'!=''">$(PublishJobFolder)App_Data\jobs\continuous\AppSynJob\</PublishJobFolder>
+    <PrepareForRunDependsOn>$(PrepareForRunDependsOn);CopyPublishedFiles</PrepareForRunDependsOn>
+  </PropertyGroup>
+
+  <Target Name="CopyPublishedFiles" DependsOnTargets="_CopyBinFolder;_CopyStaticContentToPublishFolder" Condition=" '$(PublishFolder)'!='' " />
+
+  <Target Name="GatherBinFiles">
+    <ItemGroup>
+      <BinFiles Include="$(OutputPath)**" Exclude="*.vshost.*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_CopyBinFolder" DependsOnTargets="GatherBinFiles">
+    <Message Importance="high" Text="BinFiles: @(BinFiles)" />
+
+    <Copy SourceFiles="@(BinFiles)" DestinationFiles="$(PublishJobFolder)%(RecursiveDir)%(Filename)%(Extension)" SkipUnchangedFiles="true" UseHardlinksIfPossible="true" />
+  </Target>
+
+  <Target Name="_CopyStaticContentToPublishFolder">
+    <Message Importance="high" Text="Content: @(Content)" />
+
+    <Copy SourceFiles="@(Content)" DestinationFiles="$(PublishJobFolder)%(Identity)" SkipUnchangedFiles="true" UseHardlinksIfPossible="true" />
+  </Target>
+</Project>
