@@ -20,8 +20,8 @@ namespace AppSyndication.WebJobs.Data
                 revision = "0";
             }
 
-            this.PartitionKey = CalculatePartitionKey(channel, alias, media);
-            this.RowKey = CalculateRowKey(false, version, revision);
+            this.PartitionKey = CalculatePartitionKey(channel);
+            this.RowKey = CalculateRowKey(false, alias, media, version, revision);
 
             this.Channel = channel;
             this.Alias = alias;
@@ -69,7 +69,7 @@ namespace AppSyndication.WebJobs.Data
             var tag = new TagEntity
             {
                 PartitionKey = this.PartitionKey,
-                RowKey = CalculateRowKey(true, this.Version, this.Revision),
+                RowKey = CalculateRowKey(true, this.Alias, this.Media, this.Version, this.Revision),
                 Channel = this.Channel,
                 Alias = this.Alias,
                 Description = this.Description,
@@ -86,16 +86,16 @@ namespace AppSyndication.WebJobs.Data
             return tag;
         }
 
-        internal static string CalculatePartitionKey(string channel, string alias, string media)
+        internal static string CalculatePartitionKey(string channel)
+        {
+            return channel;
+        }
+
+        internal static string CalculateRowKey(bool primaryTag, string alias, string media, string version, string revision)
         {
             var hash = HashMedia("|", media);
 
-            return $"{channel}|{alias}{hash}";
-        }
-
-        internal static string CalculateRowKey(bool primaryTag, string version, string revision)
-        {
-            return primaryTag ? String.Empty : $"v{version}-r{revision}";
+            return primaryTag ? $"{alias}{hash}" : $"{alias}{hash}|v{version}-r{revision}";
         }
 
         internal static string CalculateUid(string partitionKey, string rowKey)
