@@ -39,7 +39,7 @@ namespace AppSyndication.WebJobs.Data
 
             if (ensureExists && !_tagContainerAlreadyExists)
             {
-                await container.CreateIfNotExistsAsync();
+                await container.CreateIfNotExistsAsync(BlobContainerPublicAccessType.Blob, new BlobRequestOptions() { DisableContentMD5Validation = true, }, new OperationContext());
                 _tagContainerAlreadyExists = true;
             }
 
@@ -57,6 +57,15 @@ namespace AppSyndication.WebJobs.Data
             }
 
             return container;
+        }
+
+        public async Task<CloudBlockBlob> TagTransactionUploadBlobAsync(string channel, string transactionId)
+        {
+            var blobName = $"{channel}/{transactionId}";
+
+            var container = await this.TagTransactionContainerAsync();
+
+            return container.GetBlockBlobReference(blobName);
         }
 
         public async Task QueueTagTransactionMessageAsync(StoreTagMessage content)

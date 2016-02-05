@@ -11,13 +11,11 @@ namespace AppSyndication.WebJobs.StoreTagJob
 {
     public class UpdateStorageCommand
     {
-        public UpdateStorageCommand(Connection connection, TagTransactionEntity tagTransaction, SoftwareIdentity tag)
+        public UpdateStorageCommand(Connection connection, TagTransactionEntity tagTransaction)
         {
             this.Connection = connection;
 
             this.TagTransaction = tagTransaction;
-
-            this.Tag = tag;
         }
 
         public bool DidWork { get; private set; }
@@ -25,8 +23,6 @@ namespace AppSyndication.WebJobs.StoreTagJob
         private Connection Connection { get; }
 
         private TagTransactionEntity TagTransaction { get; }
-
-        private SoftwareIdentity Tag { get; }
 
         public async Task<bool> ExecuteAsync()
         {
@@ -57,19 +53,68 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
         private async Task<TagEntity> CreateTag()
         {
-            var tagEntity = CreateTagEntityFromSoftwareIdentity(this.TagTransaction.Channel, this.TagTransaction.AliasOverride, this.Tag);
+            var swidtag = await ReadTag(this.Connection, this.TagTransaction);
 
-            var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(tagEntity.PartitionKey, tagEntity.RowKey, this.Tag).ToList();
+            var tagEntity = CreateTagEntityFromSoftwareIdentity(this.TagTransaction.Channel, this.TagTransaction.AliasOverride, swidtag);
+
+            var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(tagEntity.PartitionKey, tagEntity.RowKey, swidtag).ToList();
 
             await this.WriteRedirects(redirects);
 
-            await this.WriteBlobs(tagEntity, this.Tag);
+            await this.WriteBlobs(tagEntity, swidtag);
 
             tagEntity.Stored = DateTime.UtcNow;
 
             await this.WriteTag(tagEntity);
 
             return tagEntity;
+        }
+        
+        private static async Task<SoftwareIdentity> ReadTag(Connection connection, TagTransactionEntity tagTx)
+        {
+            SoftwareIdentity swidtag;
+
+            var blob = await connection.TagTransactionUploadBlobAsync(tagTx.Channel, tagTx.Id);
+
+            var text = await blob.DownloadTextAsync();
+
+            if (!TryLoadJsonTag(text, out swidtag))
+            {
+                if (!TryLoadXmlTag(text, out swidtag))
+                {
+                    throw new StoreTagJobException($"Cannot parse tag: {text}");
+                }
+            }
+
+            return swidtag;
+        }
+
+        private static bool TryLoadJsonTag(string text, out SoftwareIdentity tag)
+        {
+            try
+            {
+                tag = SoftwareIdentity.LoadJson(text);
+            }
+            catch (Exception)
+            {
+                tag = null;
+            }
+
+            return tag != null;
+        }
+
+        private static bool TryLoadXmlTag(string text, out SoftwareIdentity tag)
+        {
+            try
+            {
+                tag = SoftwareIdentity.LoadXml(text);
+            }
+            catch (Exception)
+            {
+                tag = null;
+            }
+
+            return tag != null;
         }
 
         private static TagEntity CreateTagEntityFromSoftwareIdentity(string channel, string alias, SoftwareIdentity swidtag)
@@ -167,8 +212,6 @@ namespace AppSyndication.WebJobs.StoreTagJob
             var xml = swidtag.SwidTagXml;
 
             var xmlBlob = tagContainer.GetBlockBlobReference(tagEntity.XmlBlobName);
-
-            //var revisions = GetTagBlobRevisions(blob);
 
             await Task.WhenAll(
                 UploadTagToBlob(tagEntity, jsonBlob, json, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd),

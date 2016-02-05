@@ -18,6 +18,6 @@
 
         public const string TagTransactionQueue = "tag-queue";
 
-        public const string TransactionTable = "tagtx";
+        public const string TransactionTable = "transaction";
     }
 }

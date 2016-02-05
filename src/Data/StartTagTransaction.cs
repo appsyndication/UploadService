@@ -34,13 +34,9 @@ namespace AppSyndication.WebJobs.Data
 
             var transactionId = $"{username}|{now}-{uniquifier % 10000}";
 
-            var stagedBlob = $"{channel}/{transactionId}";
+            var blob = await connection.TagTransactionUploadBlobAsync(channel, transactionId);
 
-            var container = await connection.TagTransactionContainerAsync();
-
-            var blob = container.GetBlockBlobReference(stagedBlob);
-
-            var entity = new TagTransactionEntity(TagTransactionOperation.Create, channel, transactionId, stagedBlob);
+            var entity = new TagTransactionEntity(TagTransactionOperation.Create, channel, transactionId, blob.Name);
 
             await connection.TransactionTable().Create(entity);
 

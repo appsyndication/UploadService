@@ -87,7 +87,7 @@ namespace AppSyndication.WebJobs.Data
             {
                 PartitionKey = this.PartitionKey,
                 RowKey = this.RowKey,
-                ETag = this.ETag,
+                ETag = "*",
                 Operation = TagTransactionOperation.Error.ToString(),
             };
         }
