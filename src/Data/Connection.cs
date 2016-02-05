@@ -1,6 +1,4 @@
-﻿using System;
-using System.IO;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
 using Microsoft.WindowsAzure.Storage.Queue;
@@ -11,9 +9,15 @@ namespace AppSyndication.WebJobs.Data
 {
     public class Connection
     {
-        public const string TagTransactionBlobContainer = "tagtxs";
+        private bool _redirectTableAlreadyExists;
+        private bool _downloadTableAlreadyExists;
+        private bool _tagTableAlreadyExists;
+        private bool _transactionTableAlreadyExists;
 
-        public const string TagTransactionQueue = "tag-queue";
+        private bool _indexQueueAlreadyExists;
+        private bool _tagContainerAlreadyExists;
+        private bool _tagTransactionContainerAlreadyExists;
+        private bool _tagTransactionQueueAlreadyExists;
 
         public Connection(string storageConnectionString)
         {
@@ -24,22 +28,87 @@ namespace AppSyndication.WebJobs.Data
 
         private CloudStorageAccount TagStorage { get; set; }
 
-        public CloudStorageAccount ConnectToTagStorage()
+        public CloudStorageAccount ConnectToIndexStorage()
         {
-            return this.TagStorage ?? (this.TagStorage = CloudStorageAccount.Parse(this.StorageConnectionString));
+            return this.ConnectToTagStorage();
         }
 
-        public CloudBlobClient AccessBlobs()
+        public async Task<CloudBlobContainer> TagContainerAsync(bool ensureExists = true)
         {
-            return this.ConnectToTagStorage().CreateCloudBlobClient();
+            var container = this.AccessBlobs().GetContainerReference(StorageName.TagBlobContainer);
+
+            if (ensureExists && !_tagContainerAlreadyExists)
+            {
+                await container.CreateIfNotExistsAsync();
+                _tagContainerAlreadyExists = true;
+            }
+
+            return container;
         }
 
-        public CloudTableClient AccessTables()
+        public async Task<CloudBlobContainer> TagTransactionContainerAsync(bool ensureExists = true)
+        {
+            var container = this.AccessBlobs().GetContainerReference(StorageName.TagTransactionBlobContainer);
+
+            if (ensureExists && !_tagTransactionContainerAlreadyExists)
+            {
+                await container.CreateIfNotExistsAsync();
+                _tagTransactionContainerAlreadyExists = true;
+            }
+
+            return container;
+        }
+
+        public async Task QueueTagTransactionMessageAsync(StoreTagMessage content)
+        {
+            await this.QueueMessageAsync(StorageName.TagTransactionQueue, content, _tagTransactionQueueAlreadyExists);
+
+            _tagTransactionQueueAlreadyExists = true;
+        }
+
+        public async Task QueueIndexMessageAsync(IndexChannelMessage content)
+        {
+            await this.QueueMessageAsync(StorageName.IndexQueue, content, _indexQueueAlreadyExists);
+
+            _indexQueueAlreadyExists = true;
+        }
+
+        public virtual RedirectTable RedirectTable(bool ensureExists = true)
+        {
+            return new RedirectTable(this, ensureExists, ref _redirectTableAlreadyExists);
+        }
+
+        public virtual DownloadTable DownloadTable(bool ensureExists = true)
+        {
+            return new DownloadTable(this, ensureExists, ref _downloadTableAlreadyExists);
+        }
+
+        public virtual TagTable TagTable(bool ensureExists = true)
+        {
+            return new TagTable(this, ensureExists, ref _tagTableAlreadyExists);
+        }
+
+        public virtual TransactionTable TransactionTable(bool ensureExists = true)
+        {
+            return new TransactionTable(this, ensureExists, ref _transactionTableAlreadyExists);
+        }
+
+        internal CloudTableClient AccessTables()
         {
             return this.ConnectToTagStorage().CreateCloudTableClient();
         }
 
-        public async Task QueueMessageAsync(string queueName, object content)
+        private CloudStorageAccount ConnectToTagStorage()
+        {
+            return this.TagStorage ?? (this.TagStorage = CloudStorageAccount.Parse(this.StorageConnectionString));
+        }
+
+        private CloudBlobClient AccessBlobs()
+        {
+            return this.ConnectToTagStorage().CreateCloudBlobClient();
+        }
+
+        private async Task QueueMessageAsync(string queueName, object content, bool alreadyExists)
         {
             var json = JsonConvert.SerializeObject(content);
 
@@ -49,29 +118,12 @@ namespace AppSyndication.WebJobs.Data
 
             var queue = queues.GetQueueReference(queueName);
 
-            await queue.CreateIfNotExistsAsync();
+            if (!alreadyExists)
+            {
+                await queue.CreateIfNotExistsAsync();
+            }
 
             await queue.AddMessageAsync(message);
-        }
-
-        public virtual DownloadRedirectsTable DownloadRedirectsTable(bool ensureExists = true)
-        {
-            return new DownloadRedirectsTable(this, ensureExists);
-        }
-
-        public virtual DownloadsTable DownloadsTable(bool ensureExists = true)
-        {
-            return new DownloadsTable(this, ensureExists);
-        }
-
-        public virtual TagsTable TagsTable(bool ensureExists = true)
-        {
-            return new TagsTable(this, ensureExists);
-        }
-
-        public virtual TransactionTable TransactionTable(bool ensureExists = true)
-        {
-            return new TransactionTable(this, ensureExists);
         }
     }
 }

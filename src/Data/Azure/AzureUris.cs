@@ -9,58 +9,21 @@ namespace AppSyndication.WebJobs.Data.Azure
     {
         private static readonly Regex Fix = new Regex(@"[^A-Za-z0-9]+", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.Singleline);
 
-        //private static string _containerUri;
-
         public static string AzureSafeId(string id)
         {
             return Fix.Replace(id, "-").Trim('-').ToLowerInvariant();
         }
-
-        //public static string AbsoluteUriInContainer(string blobRelativeUri)
-        //{
-        //    return _containerUri + "/" + blobRelativeUri;
-        //}
-
-        //public static string JsonTagBlobInTagContainer(string blobName)
-        //{
-        //    return _containerUri + "/" + blobName + ".jsontag";
-        //}
-
-        //public static string SwidTagBlobInTagContainer(string blobName)
-        //{
-        //    return _containerUri + "/" + blobName + ".swidtag";
-        //}
-
-        //public static string JsonActiveTagBlobRelativeUri(string sourceBlobName, string tagBlobName)
-        //{
-        //    return sourceBlobName + "/" + tagBlobName + ".jsontag";
-        //}
-
-        //public static string JsonActiveTagBlobRelativeUri(string tagBlobName)
-        //{
-        //    return tagBlobName + ".jsontag";
-        //}
-
-        //public static string JsonTagVersionedBlobRelativeUri(string sourceBlobName, string tagBlobName, string version)
-        //{
-        //    return sourceBlobName + "/" + tagBlobName + "/v" + version + ".jsontag";
-        //}
-
-        public static string JsonTagVersionedBlobRelativeUri(string tagBlobName, string version)
-        {
-            return string.Concat(tagBlobName, "/v", version, ".json.swidtag").ToLowerInvariant();
-        }
-
-        public static string XmlTagVersionedBlobRelativeUri(string tagBlobName, string version)
-        {
-            return string.Concat(tagBlobName, "/v", version, ".xml.swidtag").ToLowerInvariant();
-        }
-
+        
         public static string CalculateKey(params string[] args)
         {
             var key = String.Join("|", args);
 
-            var bytes = Encoding.UTF8.GetBytes(key);
+            return FriendlyHash(key);
+        }
+
+        public static string FriendlyHash(string value)
+        {
+            var bytes = Encoding.UTF8.GetBytes(value);
 
             using (var md5 = MD5.Create())
             {

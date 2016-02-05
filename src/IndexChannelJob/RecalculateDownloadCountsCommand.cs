@@ -32,13 +32,13 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
             //var tables = storage.CreateCloudTableClient();
 
-            //var tagsTable = new TagsTable(tables);
+            //var tagsTable = new TagTable(tables);
 
-            //var redirectsTable = new DownloadRedirectsTable(tables);
+            //var redirectsTable = new RedirectTable(tables);
 
-            var redirectsTable = this.Connection.DownloadRedirectsTable();
+            var redirectsTable = this.Connection.RedirectTable();
 
-            var downloadsTable = this.Connection.DownloadsTable(); //tables.GetTableReference("downloads");
+            var downloadsTable = this.Connection.DownloadTable(); //tables.GetTableReference("downloads");
 
             //await downloadsTable.CreateIfNotExistsAsync();
 
@@ -91,7 +91,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         }
 
 
-        private static IEnumerable<DownloadCount> GatherDownloadCounts(DownloadRedirectsTable redirectsTable, IEnumerable<DownloadEntity> downloads)
+        private static IEnumerable<DownloadCount> GatherDownloadCounts(RedirectTable redirectsTable, IEnumerable<DownloadEntity> downloads)
         {
             var countUpdates = new Dictionary<string, DownloadCount>();
 
@@ -123,7 +123,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         }
 
 #if false
-        private static IEnumerable<DownloadCount> CalculateDownloadCounts(DownloadRedirectsTable redirectsTable, CloudTable downloadsTable, TableQuery<DownloadEntity> query)
+        private static IEnumerable<DownloadCount> CalculateDownloadCounts(RedirectTable redirectsTable, CloudTable downloadsTable, TableQuery<DownloadEntity> query)
         {
             var countUpdates = new Dictionary<string, DownloadCount>();
 
@@ -150,9 +150,9 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         }
 #endif
 
-        private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagsTable tagsTable, DownloadRedirectsTable redirectsTable, IEnumerable<DownloadCount> updates)
+        private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagTable tagsTable, RedirectTable redirectsTable, IEnumerable<DownloadCount> updates)
         {
-            var foundRedirects = new Dictionary<string, DownloadRedirectEntity>();
+            var foundRedirects = new Dictionary<string, RedirectEntity>();
             var foundTags = new Dictionary<string, TagEntity>();
 
             var tasks = new List<Task>();
@@ -214,7 +214,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             return tagUids;
         }
 
-        ////private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagsTable tagsTable, DownloadRedirectsTable redirectsTable, IEnumerable<DownloadCount> updates)
+        ////private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagTable tagsTable, RedirectTable redirectsTable, IEnumerable<DownloadCount> updates)
         ////{
         ////    var foundRedirects = new Dictionary<string, DownloadRedirectEntity>();
         ////    var foundTags = new Dictionary<string, TagEntity>();
@@ -278,7 +278,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         ////    return tagUids;
         ////}
 
-        ////private static async Task UpdatePrimaryTagCounts(TagsTable tagsTable, IEnumerable<string> updatedAzids)
+        ////private static async Task UpdatePrimaryTagCounts(TagTable tagsTable, IEnumerable<string> updatedAzids)
         ////{
         ////    var tasks = new List<Task>();
 
@@ -302,12 +302,12 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private class DownloadCount
         {
-            public DownloadCount(DownloadRedirectEntity redirect)
+            public DownloadCount(RedirectEntity redirect)
             {
                 this.Redirect = redirect;
             }
 
-            private DownloadRedirectEntity Redirect { get; }
+            private RedirectEntity Redirect { get; }
             //public string RedirectKey { get; set; }
 
             //public string SourceAzid { get; set; }

@@ -5,16 +5,16 @@ using Microsoft.WindowsAzure.Storage.Table;
 
 namespace AppSyndication.WebJobs.Data
 {
-    public class DownloadsTable : TableBase
+    public class DownloadTable : TableBase
     {
-        public DownloadsTable(Connection connection, bool ensureExists)
-            : base("downloads", connection, ensureExists)
+        public DownloadTable(Connection connection, bool ensureExists, ref bool alreadyExists)
+            : base(StorageName.DownloadTable, connection, ensureExists, ref alreadyExists)
         {
         }
 
-        public virtual IEnumerable<DownloadRedirectEntity> GetAllRedirects()
+        public virtual IEnumerable<RedirectEntity> GetAllRedirects()
         {
-            var query = new TableQuery<DownloadRedirectEntity>();
+            var query = new TableQuery<RedirectEntity>();
 
             var redirects = this.Table.ExecuteQuery(query);
 

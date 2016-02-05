@@ -33,11 +33,11 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             host.RunAndBlock();
         }
 
-        public static async Task Index([QueueTrigger("tag-index-queue")] string channel, TextWriter log)
+        public static async Task Index([QueueTrigger(StorageName.IndexQueue)] IndexChannelMessage message, TextWriter log)
         {
             log.WriteLine("Indexing started");
 
-            await RecalculateDownloadCounts(channel, log);
+            await RecalculateDownloadCounts(message.Channel, log);
 
             var index = new IndexTagsCommand(Connection);
             await index.ExecuteAsync();

@@ -30,6 +30,8 @@ namespace AppSyndication.WebJobs.Data
 
         public string Channel { get; set; }
 
+        public string AliasOverride { get; set; }
+
         public string Id { get; set; }
 
         public string Operation { get; set; }
@@ -62,30 +64,6 @@ namespace AppSyndication.WebJobs.Data
             return false;
         }
 
-        //public static TagTransactionEntity CreateDeleteTransaction(string transactionId, TagEntity tag)
-        //{
-        //    var txTag = new TagTransactionEntity();
-
-        //    txTag.PartitionKey = transactionId;
-        //    txTag.RowKey = tag.TagAzid;
-
-        //    txTag.Operation = TagTransactionOperation.Delete.ToString();
-
-        //    txTag.Fingerprint = tag.Fingerprint;
-
-        //    txTag.Name = tag.Name;
-
-        //    txTag.Alias = tag.Alias;
-
-        //    txTag.TagId = tag.TagId;
-
-        //    txTag.Version = tag.Version;
-
-        //    txTag.Updated = tag.Updated;
-
-        //    return txTag;
-        //}
-
         internal static string CalculatePartitionKey(string channel, string transactionId)
         {
             return channel + "|" + transactionId;
@@ -109,6 +87,7 @@ namespace AppSyndication.WebJobs.Data
             {
                 PartitionKey = this.PartitionKey,
                 RowKey = this.RowKey,
+                ETag = this.ETag,
                 Operation = TagTransactionOperation.Error.ToString(),
             };
         }

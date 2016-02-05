@@ -1,4 +1,5 @@
 ﻿using System;
+using AppSyndication.WebJobs.Data.Azure;
 using Microsoft.WindowsAzure.Storage.Table;
 
 namespace AppSyndication.WebJobs.Data
@@ -9,6 +10,11 @@ namespace AppSyndication.WebJobs.Data
 
         public TagEntity(string channel, string alias, string tagId, string version, string revision, string media, DateTime? stored = null)
         {
+            if (String.IsNullOrEmpty(version))
+            {
+                version = "0";
+            }
+
             if (String.IsNullOrEmpty(revision))
             {
                 revision = "0";
@@ -26,7 +32,7 @@ namespace AppSyndication.WebJobs.Data
             this.Stored = stored ?? DateTime.UtcNow;
         }
 
-        public string Uid => this.PartitionKey;
+        public string Uid => CalculateUid(this.PartitionKey, this.RowKey);
 
         public bool Primary => String.IsNullOrEmpty(this.RowKey);
 
@@ -34,9 +40,9 @@ namespace AppSyndication.WebJobs.Data
 
         public string Alias { get; set; }
 
-        public string BlobJsonUri { get; set; }
+        public string JsonBlobName => this.CalculateBlobUri("json");
 
-        public string BlobXmlUri { get; set; }
+        public string XmlBlobName => this.CalculateBlobUri("xml");
 
         public string Description { get; set; }
 
@@ -48,13 +54,13 @@ namespace AppSyndication.WebJobs.Data
 
         public string Media { get; set; }
 
+        public string Name { get; set; }
+
         public string Revision { get; set; }
 
         public DateTime Stored { get; set; }
 
         public string TagId { get; set; }
-
-        public string Name { get; set; }
 
         public string Version { get; set; }
 
@@ -64,15 +70,16 @@ namespace AppSyndication.WebJobs.Data
             {
                 PartitionKey = this.PartitionKey,
                 RowKey = CalculateRowKey(true, this.Version, this.Revision),
+                Channel = this.Channel,
                 Alias = this.Alias,
-                BlobJsonUri = this.BlobJsonUri,
-                BlobXmlUri = this.BlobXmlUri,
                 Description = this.Description,
                 Keywords = this.Keywords,
                 LogoUri = this.LogoUri,
+                Media = this.Media,
                 Name = this.Name,
-                TagId = this.TagId,
+                Revision = this.Revision,
                 Stored = this.Stored,
+                TagId = this.TagId,
                 Version = this.Version
             };
 
@@ -81,7 +88,7 @@ namespace AppSyndication.WebJobs.Data
 
         internal static string CalculatePartitionKey(string channel, string alias, string media)
         {
-            var hash = HashMedia(media);
+            var hash = HashMedia("|", media);
 
             return $"{channel}|{alias}{hash}";
         }
@@ -91,15 +98,26 @@ namespace AppSyndication.WebJobs.Data
             return primaryTag ? String.Empty : $"v{version}-r{revision}";
         }
 
-        private static string HashMedia(string media)
+        internal static string CalculateUid(string partitionKey, string rowKey)
+        {
+            return String.Concat(partitionKey, "@", rowKey);
+        }
+
+        private string CalculateBlobUri(string extension)
+        {
+            var hashedMedia = HashMedia("-", this.Media);
+
+            return $"/{this.Channel}/{this.Alias}/v{this.Version}-r{this.Revision}{hashedMedia}.{extension}.swidtag".ToLowerInvariant();
+        }
+
+        private static string HashMedia(string prefix, string media)
         {
             if (String.IsNullOrEmpty(media))
             {
                 return String.Empty;
             }
 
-            // TODO: implement hashing
-            throw new NotImplementedException();
+            return prefix + AzureUris.FriendlyHash(media);
         }
     }
 }

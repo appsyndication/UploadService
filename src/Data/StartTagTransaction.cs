@@ -36,21 +36,13 @@ namespace AppSyndication.WebJobs.Data
 
             var stagedBlob = $"{channel}/{transactionId}";
 
-            var blobs = connection.AccessBlobs();
-
-            var container = blobs.GetContainerReference(Connection.TagTransactionBlobContainer);
-
-            await container.CreateIfNotExistsAsync();
+            var container = await connection.TagTransactionContainerAsync();
 
             var blob = container.GetBlockBlobReference(stagedBlob);
 
             var entity = new TagTransactionEntity(TagTransactionOperation.Create, channel, transactionId, stagedBlob);
 
-            var change = connection.TransactionTable().Change();
-
-            change.Create(entity);
-
-            await change.WhenAll();
+            await connection.TransactionTable().Create(entity);
 
             return new StartTagTransaction(connection, entity, blob);
         }
@@ -59,15 +51,11 @@ namespace AppSyndication.WebJobs.Data
         {
             this.Entity.Stored = DateTime.UtcNow;
 
-            var change = this.Connection.TransactionTable().Change();
+            await this.Connection.TransactionTable().Update(this.Entity);
 
-            change.Update(this.Entity);
+            var message = new StoreTagMessage(this.Entity.Channel, this.Entity.Id);
 
-            await change.WhenAll();
-
-            var message = new StagedTagMessage(this.Entity.Channel, this.Entity.Id);
-
-            await this.Connection.QueueMessageAsync(Connection.TagTransactionQueue, message);
+            await this.Connection.QueueTagTransactionMessageAsync(message);
         }
 
         public void SetFilename(string filename)

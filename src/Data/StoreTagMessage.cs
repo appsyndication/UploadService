@@ -1,9 +1,9 @@
 
 namespace AppSyndication.WebJobs.Data
 {
-    public class StagedTagMessage
+    public class StoreTagMessage
     {
-        public StagedTagMessage(string channel, string transactionId)
+        public StoreTagMessage(string channel, string transactionId)
         {
             this.Channel = channel;
             this.TransactionId = transactionId;

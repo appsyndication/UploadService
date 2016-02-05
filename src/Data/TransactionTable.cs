@@ -6,8 +6,8 @@ namespace AppSyndication.WebJobs.Data
 {
     public class TransactionTable : TableBase
     {
-        public TransactionTable(Connection connection, bool ensureExists)
-            : base("tagstx", connection, ensureExists)
+        public TransactionTable(Connection connection, bool ensureExists, ref bool alreadyExists)
+            : base(StorageName.TransactionTable, connection, ensureExists, ref alreadyExists)
         {
         }
 
@@ -17,19 +17,19 @@ namespace AppSyndication.WebJobs.Data
 
             var result = this.Table.Execute(op);
 
-            return (TransactionSystemInfoEntity)result.Result;
+            return (TransactionSystemInfoEntity)result.Result ?? new TransactionSystemInfoEntity();
         }
 
-        public virtual DownloadRedirectEntity GetRedirect(string redirectKey)
+        public virtual RedirectEntity GetRedirect(string redirectKey)
         {
-            var op = TableOperation.Retrieve<DownloadRedirectEntity>(redirectKey, String.Empty);
+            var op = TableOperation.Retrieve<RedirectEntity>(redirectKey, String.Empty);
 
             var result = this.Table.Execute(op);
 
-            return (DownloadRedirectEntity)result.Result;
+            return (RedirectEntity)result.Result;
         }
 
-        public async Task<TagTransactionEntity> GetTagTransactionAsync(string channel, string transactionId)
+        public virtual async Task<TagTransactionEntity> GetTagTransactionAsync(string channel, string transactionId)
         {
             var partitionKey = TagTransactionEntity.CalculatePartitionKey(channel, transactionId);
 
@@ -42,9 +42,9 @@ namespace AppSyndication.WebJobs.Data
             return (TagTransactionEntity)result.Result;
         }
 
-        public async Task AddTagTransactionErrorMessageAsync(TagTransactionEntity entity, string message)
+        public virtual async Task AddTagTransactionErrorMessageAsync(TagTransactionEntity entity, string message)
         {
-            var change = this.Change();
+            var change = this.Batch();
 
             if (entity.TryUpdateOperation(TagTransactionOperation.Error))
             {

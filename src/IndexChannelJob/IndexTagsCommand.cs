@@ -38,12 +38,12 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             if (!systemInfo.LastIndexed.HasValue || systemInfo.LastIndexed < systemInfo.LastUpdatedStorage || systemInfo.LastIndexed < systemInfo.LastRecalculatedDownloadCount)
             {
                 var tags = this.Connection
-                    .TagsTable()
+                    .TagTable()
                     .GetAllTags()
                     .ToList();
 
                 var redirects = this.Connection
-                    .DownloadRedirectsTable()
+                    .RedirectTable()
                     .GetAllRedirects()
                     .ToList();
 
@@ -51,7 +51,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
                 this.UpdateSearchIndex(tags, redirects);
 
-                var change = txTable.Change();
+                var change = txTable.Batch();
 
                 systemInfo.LastIndexed = DateTime.UtcNow;
                 change.CreateOrMerge(systemInfo);
@@ -68,16 +68,14 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private static readonly string[] _fields = new[] { "alias", "name", "description", "keywords" };
 
-        private void UpdateSearchIndex(IEnumerable<TagEntity> tags, IEnumerable<DownloadRedirectEntity> redirects)
+        private void UpdateSearchIndex(IEnumerable<TagEntity> tags, IEnumerable<RedirectEntity> redirects)
         {
-            var storage = this.Connection.ConnectToTagStorage();
-
-            var account = storage; // this.Connection.ConnectToIndexStorage();
+            var storage = this.Connection.ConnectToIndexStorage();
 
 #if false
             var search = "wix";
 
-            using (var azureDirectory = new AzureDirectory(account, "search-index"))
+            using (var azureDirectory = new AzureDirectory(storage, StorageName.SearchIndexBlobContainer))
             using (var indexReader = IndexReader.Open(azureDirectory, true))
             using (var searcher = new IndexSearcher(indexReader))
             {
@@ -97,7 +95,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             var workingFolder = Path.Combine(Path.GetTempPath(), typeof(IndexTagsCommand).ToString());
 
             using (var workingDirectory = FSDirectory.Open(workingFolder))
-            using (var azureDirectory = new AzureDirectory(account, "search-index", workingDirectory))
+            using (var azureDirectory = new AzureDirectory(storage, StorageName.SearchIndexBlobContainer, workingDirectory))
             using (var indexWriter = CreateIndexWriter(azureDirectory))
             {
                 foreach (var tag in tags)
@@ -201,8 +199,8 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             document.Add(new Field("tag_version", tag.Version, Field.Store.YES, Field.Index.NO));
             document.Add(new Field("tag_updated", tag.Stored.ToString("u"), Field.Store.YES, Field.Index.NO));
             document.Add(new Field("tag_logoUri", tag.LogoUri ?? String.Empty, Field.Store.YES, Field.Index.NO));
-            document.Add(new Field("tag_blobJsonUri", tag.BlobJsonUri, Field.Store.YES, Field.Index.NO));
-            document.Add(new Field("tag_blobXmlUri", tag.BlobXmlUri, Field.Store.YES, Field.Index.NO));
+            document.Add(new Field("tag_blobJsonUri", tag.JsonBlobName, Field.Store.YES, Field.Index.NO));
+            document.Add(new Field("tag_blobXmlUri", tag.XmlBlobName, Field.Store.YES, Field.Index.NO));
             document.Add(new Field("tag_downloads", tag.DownloadCount.ToString(), Field.Store.YES, Field.Index.NO));
 
             return document;
@@ -221,15 +219,15 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             return document;
         }
 
-        private static Document CreateDocumentForRedirect(DownloadRedirectEntity redirect)
+        private static Document CreateDocumentForRedirect(RedirectEntity redirect)
         {
             var document = new Document();
             document.Add(new Field("_type", "redirect", Field.Store.NO, Field.Index.NOT_ANALYZED));
             document.Add(new Field("redirect_key", redirect.Id, Field.Store.YES, Field.Index.NOT_ANALYZED));
-            document.Add(new Field("redirect_tagUid", redirect.TagUid, Field.Store.YES, Field.Index.NOT_ANALYZED));
-            document.Add(new Field("redirect_tagVersion", redirect.TagVersion, Field.Store.YES, Field.Index.NOT_ANALYZED));
+            document.Add(new Field("redirect_tagPk", redirect.TagPartitionKey, Field.Store.YES, Field.Index.NOT_ANALYZED));
+            document.Add(new Field("redirect_tagRk", redirect.TagRowKey, Field.Store.YES, Field.Index.NOT_ANALYZED));
             document.Add(new Field("redirect_media", redirect.Media ?? String.Empty, Field.Store.YES, Field.Index.NO));
-            document.Add(new Field("redirect_type", redirect.Type ?? String.Empty, Field.Store.YES, Field.Index.NO));
+            document.Add(new Field("redirect_type", redirect.MediaType ?? String.Empty, Field.Store.YES, Field.Index.NO));
             document.Add(new Field("redirect_uri", redirect.Uri, Field.Store.YES, Field.Index.NO));
 
             return document;

@@ -1,14 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using AppSyndication.WebJobs.Data;
-using AppSyndication.WebJobs.Data.Azure;
 using FearTheCowboy.Iso19770;
 using Microsoft.WindowsAzure.Storage.Blob;
-using Microsoft.WindowsAzure.Storage.Shared.Protocol;
-using Microsoft.WindowsAzure.Storage.Table;
 
 namespace AppSyndication.WebJobs.StoreTagJob
 {
@@ -33,8 +30,6 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
         public async Task<bool> ExecuteAsync()
         {
-            Console.WriteLine("Updating tag storage.");
-
             var txTable = this.Connection.TransactionTable();
 
             var txInfo = txTable.GetSystemInfo();
@@ -51,45 +46,183 @@ namespace AppSyndication.WebJobs.StoreTagJob
                     throw new NotImplementedException();
             }
 
-            var txBatch = txTable.Change();
-
             this.TagTransaction.Stored = DateTime.UtcNow;
-            txBatch.CreateOrMerge(this.TagTransaction);
+            await txTable.CreateOrMergeAsync(this.TagTransaction);
 
             txInfo.LastUpdatedStorage = DateTime.UtcNow.AddMilliseconds(1);
-            txBatch.CreateOrMerge(txInfo);
-
-            await txBatch.WhenAll();
-
-            Console.WriteLine("Tag storage updated.");
+            await txTable.CreateOrMergeAsync(txInfo);
 
             return this.DidWork = true;
         }
 
-        private async Task CreateTag()
+        private async Task<TagEntity> CreateTag()
         {
-            var redirectsTable = this.Connection.DownloadRedirectsTable();
+            var tagEntity = CreateTagEntityFromSoftwareIdentity(this.TagTransaction.Channel, this.TagTransaction.AliasOverride, this.Tag);
 
-            var tagEntity = this.CreateTagEntityFromSoftwareIdentity(tagTx, softwareIdentity);
+            var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(tagEntity.PartitionKey, tagEntity.RowKey, this.Tag).ToList();
 
-            var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(sourceAzid, tagEntity.TagAzid, tagEntity.Uid, softwareIdentity);
+            await this.WriteRedirects(redirects);
 
-            var tagUris = await WriteVersionedTag(sourceDirectory, tagEntity, softwareIdentity);
+            await this.WriteBlobs(tagEntity, this.Tag);
 
-            tagEntity.BlobJsonUri = tagUris.JsonUri.AbsoluteUri;
+            tagEntity.Stored = DateTime.UtcNow;
 
-            tagEntity.BlobXmlUri = tagUris.XmlUri.AbsoluteUri;
+            await this.WriteTag(tagEntity);
 
-            var primaryTag = tagEntity.AsPrimary();
-
-            return new AddedTagResult() { NewSourceUris = tagUris, Redirects = redirects, Tag = tagEntity, PrimaryTag = primaryTag };
+            return tagEntity;
         }
+
+        private static TagEntity CreateTagEntityFromSoftwareIdentity(string channel, string alias, SoftwareIdentity swidtag)
+        {
+            var name = swidtag.Name;
+            var version = swidtag.Version;
+            var revision = swidtag.TagVersion;
+            var media = swidtag.AppliesToMedia;
+
+            string description = null;
+            string keywordText = null;
+            string logoUri = null;
+
+            foreach (var meta in swidtag.Meta)
+            {
+                if (String.IsNullOrEmpty(alias))
+                {
+                    alias = meta["alias"];
+                }
+
+                if (String.IsNullOrEmpty(description))
+                {
+                    description = meta.Description;
+                }
+
+                if (String.IsNullOrEmpty(keywordText))
+                {
+                    keywordText = meta["keyword"];
+                }
+            }
+
+            if (String.IsNullOrEmpty(name))
+            {
+                throw new StoreTagJobException("An name is required. Add an name attribute to SoftwareIdentity element.");
+            }
+
+            if (String.IsNullOrEmpty(alias))
+            {
+                throw new StoreTagJobException("An alias is required. Add an alias attribute to Meta element or specify an alias when uploading the tag.");
+            }
+
+            foreach (var link in swidtag.Links)
+            {
+                if (String.IsNullOrEmpty(logoUri) && link.Relationship == "logoUri")
+                {
+                    logoUri = link.HRef.AbsoluteUri;
+                }
+            }
+
+            var entity = new TagEntity(channel, alias, swidtag.TagId, version, revision, media)
+            {
+                Description = description,
+                LogoUri = logoUri,
+                Keywords = keywordText?.Split(new[] { ' ', '\t', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToArray(),
+                Name = name,
+            };
+
+            return entity;
+        }
+
+        private static IEnumerable<RedirectEntity> UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(string tagPartitionKey, string tagRowKey, SoftwareIdentity swidtag)
+        {
+            foreach (var installationLink in swidtag.Links.Where(l => l.Relationship == FearTheCowboy.Iso19770.Schema.Relationship.InstallationMedia))
+            {
+                var redirect = new RedirectEntity(tagPartitionKey, tagRowKey, installationLink.HRef.AbsoluteUri, installationLink.MediaType, installationLink.Media, null);
+
+                swidtag.RemoveLink(installationLink.HRef);
+
+                var redirectUri = new Uri(redirect.RedirectUri);
+
+                swidtag.AddLink(redirectUri, FearTheCowboy.Iso19770.Schema.Relationship.InstallationMedia);
+
+                yield return redirect;
+            }
+        }
+
+        private async Task WriteRedirects(IEnumerable<RedirectEntity> redirects)
+        {
+            var table = this.Connection.RedirectTable();
+
+            foreach (var redirect in redirects)
+            {
+                await table.Upsert(redirect);
+            }
+        }
+
+        private async Task WriteBlobs(TagEntity tagEntity, SoftwareIdentity swidtag)
+        {
+            var tagContainer = await this.Connection.TagContainerAsync();
+
+            var json = swidtag.SwidTagJson;
+
+            var jsonBlob = tagContainer.GetBlockBlobReference(tagEntity.JsonBlobName);
+
+            var xml = swidtag.SwidTagXml;
+
+            var xmlBlob = tagContainer.GetBlockBlobReference(tagEntity.XmlBlobName);
+
+            //var revisions = GetTagBlobRevisions(blob);
+
+            await Task.WhenAll(
+                UploadTagToBlob(tagEntity, jsonBlob, json, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd),
+                UploadTagToBlob(tagEntity, xmlBlob, xml, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml)
+                );
+        }
+
+        private async Task WriteTag(TagEntity tagEntity)
+        {
+            var primaryTagEntity = tagEntity.AsPrimary();
+
+            var batch = this.Connection.TagTable().Batch();
+
+            batch.Upsert(tagEntity);
+
+            batch.Upsert(primaryTagEntity);
+
+            await batch.WhenAll();
+        }
+        
+        private static async Task UploadTagToBlob(TagEntity tag, ICloudBlob blob, string content, string contentType)
+        {
+            blob.Properties.ContentType = contentType;
+            blob.Metadata.Add("id", tag.TagId);
+            blob.Metadata.Add("uid", tag.Uid);
+            blob.Metadata.Add("version", tag.Version);
+            blob.Metadata.Add("revision", tag.Revision);
+
+            // TODO: it would be nice if we could pre-gzip our tags in storage but that requires the client to accept
+            //       gzip which not enough people seem to do.
+            //blob.Properties.ContentEncoding = "gzip";
+            //using (var stream = new MemoryStream(bytes.Length))
+            //{
+            //    using (var gzip = new GZipStream(stream, CompressionLevel.Optimal, true))
+            //    {
+            //        gzip.Write(bytes, 0, bytes.Length);
+            //    }
+
+            //    stream.Seek(0, SeekOrigin.Begin);
+            //    blob.UploadFromStream(stream);
+            //}
+
+            var bytes = Encoding.UTF8.GetBytes(content);
+
+            await blob.UploadFromByteArrayAsync(bytes, 0, bytes.Length);
+        }
+
+#if false
 
         private async Task ProcessTransactions(string sourceAzid, CloudBlobDirectory sourceDirectory, IEnumerable<TagTransactionEntity> tagTransactions, SoftwareIdentity indexJsonTag, SoftwareIdentity indexXmlTag)
         {
             var storage = this.Connection.ConnectToTagStorage();
 
-            var tagsTable = new TagsTable(this.Connection);
+            var tagsTable = new TagTable(this.Connection);
 
             //var tagsBatch = new AzureBatch(tagsTable.Table);
 
@@ -251,16 +384,16 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             var tagUris = await WriteVersionedTag(sourceDirectory, tagEntity, softwareIdentity);
 
-            tagEntity.BlobJsonUri = tagUris.JsonUri.AbsoluteUri;
+            tagEntity.JsonBlobName = tagUris.JsonUri.AbsoluteUri;
 
-            tagEntity.BlobXmlUri = tagUris.XmlUri.AbsoluteUri;
+            tagEntity.XmlBlobName = tagUris.XmlUri.AbsoluteUri;
 
             var primaryTag = tagEntity.AsPrimary();
 
             return new AddedTagResult() { NewSourceUris = tagUris, Redirects = redirects, Tag = tagEntity, PrimaryTag = primaryTag };
         }
 
-        private async Task<UpdatedTagResult> UpdateTag(string sourceAzid, CloudBlobDirectory sourceDirectory, TagsTable tagsTable, TagTransactionEntity tagTx)
+        private async Task<UpdatedTagResult> UpdateTag(string sourceAzid, CloudBlobDirectory sourceDirectory, TagTable tagsTable, TagTransactionEntity tagTx)
         {
             var oldTagEntity = tagsTable.GetPrimaryTag(sourceAzid, tagTx.Id);
 
@@ -274,9 +407,9 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             var tagUris = await WriteVersionedTag(sourceDirectory, tagEntity, softwareIdentity);
 
-            tagEntity.BlobJsonUri = tagUris.JsonUri.AbsoluteUri;
+            tagEntity.JsonBlobName = tagUris.JsonUri.AbsoluteUri;
 
-            tagEntity.BlobXmlUri = tagUris.XmlUri.AbsoluteUri;
+            tagEntity.XmlBlobName = tagUris.XmlUri.AbsoluteUri;
 
             var primaryTag = tagEntity.AsPrimary();
 
@@ -287,8 +420,8 @@ namespace AppSyndication.WebJobs.StoreTagJob
                 NewSourceUris = tagUris,
                 OldSourceUris = new TagBlobUris
                 {
-                    JsonUri = new Uri(oldTagEntity.BlobJsonUri),
-                    XmlUri = new Uri(oldTagEntity.BlobXmlUri)
+                    JsonUri = new Uri(oldTagEntity.JsonBlobName),
+                    XmlUri = new Uri(oldTagEntity.XmlBlobName)
                 },
                 Redirects = redirects,
                 Tag = tagEntity,
@@ -296,7 +429,7 @@ namespace AppSyndication.WebJobs.StoreTagJob
             };
         }
 
-        private static DeleteTagResult DeleteTag(string sourceAzid, TagsTable tagsTable, TagTransactionEntity tagTx)
+        private static DeleteTagResult DeleteTag(string sourceAzid, TagTable tagsTable, TagTransactionEntity tagTx)
         {
             var tag = tagsTable.GetPrimaryTag(sourceAzid, tagTx.RowKey);
 
@@ -306,8 +439,8 @@ namespace AppSyndication.WebJobs.StoreTagJob
             {
                 DeleteSourceUris = new TagBlobUris
                 {
-                    JsonUri = new Uri(tag.BlobJsonUri),
-                    XmlUri = new Uri(tag.BlobXmlUri)
+                    JsonUri = new Uri(tag.JsonBlobName),
+                    XmlUri = new Uri(tag.XmlBlobName)
                 },
                 Tag = tag
             };
@@ -468,90 +601,7 @@ namespace AppSyndication.WebJobs.StoreTagJob
             return await blob.DownloadTextAsync();
         }
 
-        private const string PlaceholderDescription = "Placeholder text follows. This is where there would be a description about the application and what it does. How about a bit more text to make it more of a paragraph rather than just a sentence.";
-        private const string PlaceholderVersion = "0.0.0.0";
-
-        private TagEntity CreateTagEntityFromSoftwareIdentity(string channel, string alias, SoftwareIdentity swidtag)
-        {
-            var name = swidtag.Name;
-            var version = String.IsNullOrEmpty(swidtag.Version) ? PlaceholderVersion : swidtag.Version;
-            var revision = swidtag.TagVersion;
-            var media = swidtag.AppliesToMedia;
-
-            string description = null;
-            string keywordText = null;
-            string logoUri = null;
-
-            foreach (var meta in swidtag.Meta)
-            {
-                if (String.IsNullOrEmpty(alias))
-                {
-                    alias = meta["alias"];
-                }
-
-                if (String.IsNullOrEmpty(description))
-                {
-                    description = meta.Description;
-                }
-
-                if (String.IsNullOrEmpty(keywordText))
-                {
-                    keywordText = meta["keyword"];
-                }
-            }
-
-            if (String.IsNullOrEmpty(name))
-            {
-                throw new StoreTagJobException("An name is required. Add an name attribute to SoftwareIdentity element.");
-            }
-
-            if (String.IsNullOrEmpty(alias))
-            {
-                throw new StoreTagJobException("An alias is required. Add an alias attribute to Meta element or specify an alias when uploading the tag.");
-            }
-
-            foreach (var link in swidtag.Links)
-            {
-                if (String.IsNullOrEmpty(logoUri) && link.Relationship == "logoUri")
-                {
-                    logoUri = link.HRef.AbsoluteUri;
-                }
-            }
-
-            var entity = new TagEntity(channel, alias, swidtag.TagId, version, revision, media)
-            {
-                Description = description ?? PlaceholderDescription,
-                LogoUri = logoUri,
-                Keywords = keywordText?.Split(new[] { ' ', '\t', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToArray(),
-                Name = name,
-            };
-
-            return entity;
-        }
-
-        private static List<DownloadRedirectEntity> UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(string sourceAzid, string tagAzid, string tagUid, SoftwareIdentity SoftwareIdentity)
-        {
-            var redirects = new List<DownloadRedirectEntity>();
-
-            var installationLinks = SoftwareIdentity.Links.Where(l => l.Relationship == FearTheCowboy.Iso19770.Schema.Relationship.InstallationMedia).ToList();
-
-            foreach (var installationLink in installationLinks)
-            {
-                var redirect = new DownloadRedirectEntity(sourceAzid, tagAzid, tagUid, SoftwareIdentity.Version, installationLink.HRef.AbsoluteUri, installationLink.MediaType, installationLink.Media, null);
-
-                redirects.Add(redirect);
-
-                SoftwareIdentity.RemoveLink(installationLink.HRef);
-
-                var redirectUri = new Uri(redirect.RedirectUri);
-
-                SoftwareIdentity.AddLink(redirectUri, FearTheCowboy.Iso19770.Schema.Relationship.InstallationMedia);
-            }
-
-            return redirects;
-        }
-
-        private static IEnumerable<Task> CreateRedirects(CloudTable redirectsTable, IEnumerable<DownloadRedirectEntity> redirects)
+        private static IEnumerable<Task> CreateRedirects(CloudTable redirectsTable, IEnumerable<RedirectEntity> redirects)
         {
             foreach (var redirect in redirects)
             {
@@ -559,31 +609,6 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
                 yield return redirectsTable.ExecuteAsync(op);
             }
-        }
-
-        private static async Task UploadTagToBlob(TagEntity tag, CloudBlockBlob blob, string content, string contentType)
-        {
-            blob.Properties.ContentType = contentType;
-            blob.Metadata.Add("fingerprint", tag.Fingerprint);
-            blob.Metadata.Add("id", tag.TagId);
-            blob.Metadata.Add("uid", tag.Uid);
-            blob.Metadata.Add("version", tag.Version);
-
-            // TODO: it would be nice if we could pre-gzip our tags in storage but that requires the client to accept
-            //       gzip which not enough people seem to do.
-            //blob.Properties.ContentEncoding = "gzip";
-            //using (var stream = new MemoryStream(bytes.Length))
-            //{
-            //    using (var gzip = new GZipStream(stream, CompressionLevel.Optimal, true))
-            //    {
-            //        gzip.Write(bytes, 0, bytes.Length);
-            //    }
-
-            //    stream.Seek(0, SeekOrigin.Begin);
-            //    blob.UploadFromStream(stream);
-            //}
-
-            await blob.UploadTextAsync(content);
         }
 
         private class TagBlobUris
@@ -595,13 +620,9 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
         private class AddedTagResult
         {
-            public TagBlobUris NewSourceUris { get; set; }
-
-            public List<DownloadRedirectEntity> Redirects { get; set; }
+            public List<RedirectEntity> Redirects { get; set; }
 
             public TagEntity Tag { get; set; }
-
-            public TagEntity PrimaryTag { get; set; }
         }
 
         private class UpdatedTagResult
@@ -610,7 +631,7 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             public TagBlobUris OldSourceUris { get; set; }
 
-            public List<DownloadRedirectEntity> Redirects { get; set; }
+            public List<RedirectEntity> Redirects { get; set; }
 
             public TagEntity Tag { get; set; }
 
@@ -623,5 +644,6 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             public TagEntity Tag { get; set; }
         }
+#endif
     }
 }

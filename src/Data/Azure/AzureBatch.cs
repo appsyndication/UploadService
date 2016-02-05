@@ -13,11 +13,11 @@ namespace AppSyndication.WebJobs.Data.Azure
             this.Tasks = new List<Task<IList<TableResult>>>();
         }
 
-        public CloudTable Table { get; private set; }
+        public CloudTable Table { get; }
 
         private TableBatchOperation Batch { get; set; }
 
-        private List<Task<IList<TableResult>>> Tasks { get; set; }
+        private List<Task<IList<TableResult>>> Tasks { get; }
 
         public void Create(ITableEntity entity)
         {

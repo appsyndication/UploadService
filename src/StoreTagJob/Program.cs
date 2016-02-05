@@ -11,20 +11,20 @@ namespace AppSyndication.WebJobs.StoreTagJob
 {
     public static class Program
     {
-        public static Connection Connection { get; set; }
+        //public static Connection Connection { get; set; }
+        public static string _connectionString;
 
         public static void Main(string[] args)
         {
-            if (Connection == null)
-            {
-                var connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
-                Connection = new Connection(connectionString);
-            }
+            //if (Connection == null)
+            //{
+                _connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
+            //}
 
             var config = new JobHostConfiguration()
             {
-                DashboardConnectionString = Connection.StorageConnectionString,
-                StorageConnectionString = Connection.StorageConnectionString,
+                DashboardConnectionString = _connectionString,
+                StorageConnectionString = _connectionString,
             };
 
             if (config.IsDevelopment)
@@ -36,9 +36,12 @@ namespace AppSyndication.WebJobs.StoreTagJob
             host.RunAndBlock();
         }
 
-        public static async Task StoreTag([QueueTrigger(Connection.TagTransactionQueue)] StagedTagMessage message, string channel, string transactionId, int dequeueCount, [Blob("tagtxs/{channel}/{transactionId}", FileAccess.Read)] Stream input, TextWriter log)
+        public static async Task StoreTag([QueueTrigger(StorageName.TagTransactionQueue)] StoreTagMessage message, string channel, string transactionId, int dequeueCount, [Blob("tagtx/{channel}/{transactionId}", FileAccess.Read)] Stream input, TextWriter log)
         {
-            var tagTxTable = Connection.TransactionTable();
+            //var connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
+            var connection = new Connection(_connectionString);
+
+            var tagTxTable = connection.TransactionTable();
 
             var tagTx = await tagTxTable.GetTagTransactionAsync(channel, transactionId);
 
@@ -51,8 +54,10 @@ namespace AppSyndication.WebJobs.StoreTagJob
             {
                 var tag = await ReadTag(tagTx, input);
 
-                var command = new UpdateStorageCommand(Connection, tagTx, tag);
+                var command = new UpdateStorageCommand(connection, tagTx, tag);
                 await command.ExecuteAsync();
+
+                await connection.QueueIndexMessageAsync(new IndexChannelMessage(channel));
             }
             catch (StoreTagJobException e)
             {
