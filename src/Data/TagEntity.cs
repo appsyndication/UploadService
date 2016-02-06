@@ -34,7 +34,7 @@ namespace AppSyndication.WebJobs.Data
 
         public string Uid => CalculateUid(this.PartitionKey, this.RowKey);
 
-        public bool Primary => String.IsNullOrEmpty(this.RowKey);
+        public bool Primary => (this.RowKey == this.Alias);
 
         public string Channel { get; set; }
 
@@ -98,7 +98,7 @@ namespace AppSyndication.WebJobs.Data
             return primaryTag ? $"{alias}{hash}" : $"{alias}{hash}|v{version}-r{revision}";
         }
 
-        internal static string CalculateUid(string partitionKey, string rowKey)
+        public static string CalculateUid(string partitionKey, string rowKey)
         {
             return String.Concat(partitionKey, "@", rowKey);
         }
@@ -107,7 +107,7 @@ namespace AppSyndication.WebJobs.Data
         {
             var hashedMedia = HashMedia("-", this.Media);
 
-            return $"/{this.Channel}/{this.Alias}/v{this.Version}-r{this.Revision}{hashedMedia}.{extension}.swidtag".ToLowerInvariant();
+            return $"{this.Channel}/{this.Alias}/v{this.Version}-r{this.Revision}{hashedMedia}.{extension}.swidtag".ToLowerInvariant();
         }
 
         private static string HashMedia(string prefix, string media)

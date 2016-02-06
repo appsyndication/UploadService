@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using AppSyndication.WebJobs.Data;
 
@@ -20,80 +22,41 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         {
             this.DidWork = false;
 
-            Console.WriteLine("Recalculating download counts.");
+            var txTable = this.Connection.TransactionTable();
 
-            //var txTable = new TagTransactionTable(this.Connection);
+            var txInfo = txTable.GetSystemInfo();
 
-            //var txInfo = txTable.GetTransactionInfo();
+            var downloadTable = this.Connection.DownloadTable();
 
-            var txInfo = this.Connection.TransactionTable().GetSystemInfo();
+            var downloads = downloadTable.GetDownloadsSince(txInfo.LastRecalculatedDownloadCount).ToList();
 
-            //var storage = this.Connection.ConnectToTagStorage();
+            var redirectTable = this.Connection.RedirectTable();
 
-            //var tables = storage.CreateCloudTableClient();
+            DateTime lastTime;
 
-            //var tagsTable = new TagTable(tables);
+            var updates = GatherDownloadCounts(redirectTable, downloads, out lastTime).ToList();
 
-            //var redirectsTable = new RedirectTable(tables);
+            if (updates.Any())
+            {
+                var tagTable = this.Connection.TagTable();
 
-            var redirectsTable = this.Connection.RedirectTable();
+                await UpdateTagDownloadCounts(tagTable, redirectTable, updates, lastTime);
 
-            var downloadsTable = this.Connection.DownloadTable(); //tables.GetTableReference("downloads");
+                txInfo.LastRecalculatedDownloadCount = lastTime;
 
-            //await downloadsTable.CreateIfNotExistsAsync();
+                await txTable.Update(txInfo);
 
-            var downloads = downloadsTable.GetDownloadsSince(txInfo.LastRecalculatedDownloadCount);
-#if false
-            var lastTime = txInfo.LastRecalculatedDownloadCount ?? AzureDateTime.Min;
-            //lastTime = lastTime.Subtract(new TimeSpan(1, 0, 0));
-
-            var newLastTime = DateTime.UtcNow;
-            //var newLastTime = DateTime.UtcNow.Add(new TimeSpan(1, 0, 0));
-
-            var startTime = lastTime.ToString("yyyy-MM-ddTHH-mm}");
-
-            var endTime = newLastTime.ToString("yyyy-MM-ddTHH-mm{");
-
-            var filter = TableQuery.CombineFilters(
-                TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.GreaterThan, startTime),
-                TableOperators.And,
-                TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.LessThan, endTime));
-
-            var query = new TableQuery<DownloadEntity>().Where(filter);
-#endif
-
-            //var updates = CalculateDownloadCounts(redirectsTable, downloadsTable, query);
-
-            var updates = GatherDownloadCounts(redirectsTable, downloads);
-
-            //if (updates.Any())
-            //{
-            //    this.DidWork = true;
-
-            //    var updatedAzids = await UpdateVersionedTagCounts(tagsTable, redirectsTable, updates);
-
-            //    await UpdatePrimaryTagCounts(tagsTable, updatedAzids);
-
-            //    txInfo.LastRecalculatedDownloadCount = newLastTime;
-
-            //    var txOp = TableOperation.Merge(txInfo);
-
-            //    await txTable.Table.ExecuteAsync(txOp);
-
-            //    Console.WriteLine("Download counts updated.");
-            //}
-            //else
-            //{
-            //    Console.WriteLine("No download counts required recalculation.");
-            //}
+                this.DidWork = true;
+            }
 
             return this.DidWork;
         }
 
-
-        private static IEnumerable<DownloadCount> GatherDownloadCounts(RedirectTable redirectsTable, IEnumerable<DownloadEntity> downloads)
+        private static IEnumerable<DownloadCount> GatherDownloadCounts(RedirectTable redirectsTable, IEnumerable<DownloadEntity> downloads, out DateTime lastTime)
         {
             var countUpdates = new Dictionary<string, DownloadCount>();
+
+            lastTime = DateTime.MinValue;
 
             foreach (var download in downloads)
             {
@@ -101,204 +64,90 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
                 if (redirect != null)
                 {
-                    DownloadCount dc;
-
-                    if (!countUpdates.TryGetValue(download.DownloadKey, out dc))
-                    {
-                        dc = new DownloadCount(redirect); //() { RedirectKey = redirect.PartitionKey, SourceAzid = redirect.SourceAzid, TagAzid = redirect.TagAzid, TagUid = redirect.TagUid, TagVersion = redirect.TagVersion };
-
-                        countUpdates.Add(redirect.Id, dc);
-                    }
-
                     // This protects against the case that the system transaction's download count last updated was not successfully
                     // written but the redirect count was updated.
                     if (redirect.DownloadCountLastUpdated.HasValue && redirect.DownloadCountLastUpdated < download.Timestamp)
                     {
+                        DownloadCount dc;
+
+                        if (!countUpdates.TryGetValue(download.DownloadKey, out dc))
+                        {
+                            dc = new DownloadCount(redirect);
+
+                            countUpdates.Add(redirect.Id, dc);
+                        }
+
                         ++dc.Count;
                     }
                 }
+
+                lastTime = (lastTime < download.Timestamp.DateTime) ? download.Timestamp.DateTime : lastTime;
             }
 
             return countUpdates.Values;
         }
 
-#if false
-        private static IEnumerable<DownloadCount> CalculateDownloadCounts(RedirectTable redirectsTable, CloudTable downloadsTable, TableQuery<DownloadEntity> query)
+        private static async Task UpdateTagDownloadCounts(TagTable tagTable, RedirectTable redirectTable, IEnumerable<DownloadCount> updates, DateTime lastTime)
         {
-            var countUpdates = new Dictionary<string, DownloadCount>();
-
-            foreach (var download in downloadsTable.ExecuteQuery(query))
-            {
-                var redirect = redirectsTable.GetRedirect(download.DownloadKey);
-
-                if (redirect != null)
-                {
-                    DownloadCount dc;
-
-                    if (!countUpdates.TryGetValue(download.DownloadKey, out dc))
-                    {
-                        dc = new DownloadCount() { RedirectKey = redirect.PartitionKey, SourceAzid = redirect.SourceAzid, TagAzid = redirect.TagAzid, TagUid = redirect.TagUid, TagVersion = redirect.TagVersion };
-
-                        countUpdates.Add(dc.RedirectKey, dc);
-                    }
-
-                    ++dc.Count;
-                }
-            }
-
-            return countUpdates.Values;
-        }
-#endif
-
-        private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagTable tagsTable, RedirectTable redirectsTable, IEnumerable<DownloadCount> updates)
-        {
-            var foundRedirects = new Dictionary<string, RedirectEntity>();
+            var countedRedirect = new List<RedirectEntity>();
             var foundTags = new Dictionary<string, TagEntity>();
 
-            var tasks = new List<Task>();
+            // Update the versioned entities with the correct download counts.
+            foreach (var dc in updates)
+            {
+                TagEntity tag;
+                var tagUid = TagEntity.CalculateUid(dc.Redirect.TagPartitionKey, dc.Redirect.TagRowKey);
 
-            var tagUids = new List<string>();
+                if (!foundTags.TryGetValue(tagUid, out tag))
+                {
+                    tag = await tagTable.GetTagAsync(dc.Redirect.TagPartitionKey, dc.Redirect.TagRowKey);
 
-            //// Update the versioned entities with the correct download counts.
-            //foreach (var dc in updates)
-            //{
-            //    //DownloadRedirectEntity redirect;
+                    if (tag == null)
+                    {
+                        continue;
+                    }
 
-            //    //if (!foundRedirects.TryGetValue(dc.RedirectKey, out redirect))
-            //    //{
-            //    //    redirect = redirectsTable.GetRedirect(dc.RedirectKey);
+                    Debug.Assert(tagUid == tag.Uid);
+                    foundTags.Add(tag.Uid, tag);
+                }
 
-            //    //    foundRedirects.Add(dc.RedirectKey, redirect);
-            //    //}
+                TagEntity primaryTag;
+                var primaryTagUid = tag.AsPrimary().Uid;
 
-            //    var tagKey = String.Join("|", dc.SourceAzid, dc.TagAzid, dc.TagVersion);
+                if (!foundTags.TryGetValue(tagUid, out primaryTag))
+                {
+                    primaryTag = await tagTable.GetPrimaryTagAsync(tag);
 
-            //    TagEntity tag;
+                    if (primaryTag == null)
+                    {
+                        continue;
+                    }
 
-            //    if (!foundTags.TryGetValue(tagKey, out tag))
-            //    {
-            //        tag = tagsTable.GetTag(dc.SourceAzid, dc.TagAzid, dc.TagVersion);
+                    Debug.Assert(primaryTagUid == primaryTag.Uid);
+                    foundTags.Add(primaryTag.Uid, primaryTag);
+                }
 
-            //        foundTags.Add(tagKey, tag);
-            //    }
+                dc.Redirect.DownloadCount += dc.Count;
+                dc.Redirect.DownloadCountLastUpdated = lastTime;
 
-            //    redirect.DownloadCount += dc.Count;
+                countedRedirect.Add(dc.Redirect);
 
-            //    tag.DownloadCount += dc.Count;
-            //}
+                tag.DownloadCount += dc.Count;
 
-            //// Write the changes back to table storage.
-            //foreach (var redirect in foundRedirects.Values)
-            //{
-            //    var redirectOp = TableOperation.Merge(redirect);
+                primaryTag.DownloadCount += dc.Count;
+            }
 
-            //    var task = redirectsTable.Table.ExecuteAsync(redirectOp);
+            // Write the changes back to table storage.
+            foreach (var redirect in countedRedirect)
+            {
+                await redirectTable.Update(redirect);
+            }
 
-            //    tasks.Add(task);
-            //}
-
-            //foreach (var tag in foundTags.Values)
-            //{
-            //    var tagOp = TableOperation.Merge(tag);
-
-            //    var task = tagsTable.Table.ExecuteAsync(tagOp);
-
-            //    tasks.Add(task);
-
-            //    tagUids.Add(tag.Uid);
-            //}
-
-            //await Task.WhenAll(tasks);
-
-            // Return the set of uids that were updated.
-            return tagUids;
+            foreach (var tag in foundTags.Values)
+            {
+                await tagTable.Update(tag);
+            }
         }
-
-        ////private static async Task<IEnumerable<string>> UpdateVersionedTagCounts(TagTable tagsTable, RedirectTable redirectsTable, IEnumerable<DownloadCount> updates)
-        ////{
-        ////    var foundRedirects = new Dictionary<string, DownloadRedirectEntity>();
-        ////    var foundTags = new Dictionary<string, TagEntity>();
-
-        ////    var tasks = new List<Task>();
-
-        ////    var tagUids = new List<string>();
-
-        ////    // Update the versioned entities with the correct download counts.
-        ////    foreach (var dc in updates)
-        ////    {
-        ////        DownloadRedirectEntity redirect;
-
-        ////        if (!foundRedirects.TryGetValue(dc.RedirectKey, out redirect))
-        ////        {
-        ////            redirect = redirectsTable.GetRedirect(dc.RedirectKey);
-
-        ////            foundRedirects.Add(dc.RedirectKey, redirect);
-        ////        }
-
-        ////        var tagKey = String.Join("|", dc.SourceAzid, dc.TagAzid, dc.TagVersion);
-
-        ////        TagEntity tag;
-
-        ////        if (!foundTags.TryGetValue(tagKey, out tag))
-        ////        {
-        ////            tag = tagsTable.GetTag(dc.SourceAzid, dc.TagAzid, dc.TagVersion);
-
-        ////            foundTags.Add(tagKey, tag);
-        ////        }
-
-        ////        redirect.DownloadCount += dc.Count;
-
-        ////        tag.DownloadCount += dc.Count;
-        ////    }
-
-        ////    // Write the changes back to table storage.
-        ////    foreach (var redirect in foundRedirects.Values)
-        ////    {
-        ////        var redirectOp = TableOperation.Merge(redirect);
-
-        ////        var task = redirectsTable.Table.ExecuteAsync(redirectOp);
-
-        ////        tasks.Add(task);
-        ////    }
-
-        ////    foreach (var tag in foundTags.Values)
-        ////    {
-        ////        var tagOp = TableOperation.Merge(tag);
-
-        ////        var task = tagsTable.Table.ExecuteAsync(tagOp);
-
-        ////        tasks.Add(task);
-
-        ////        tagUids.Add(tag.Uid);
-        ////    }
-
-        ////    await Task.WhenAll(tasks);
-
-        ////    // Return the set of uids that were updated.
-        ////    return tagUids;
-        ////}
-
-        ////private static async Task UpdatePrimaryTagCounts(TagTable tagsTable, IEnumerable<string> updatedAzids)
-        ////{
-        ////    var tasks = new List<Task>();
-
-        ////    foreach (var azid in updatedAzids)
-        ////    {
-        ////        var tags = tagsTable.GetAllTagsForAzid(azid).ToList();
-
-        ////        var primaryTag = tags.Single(t => String.IsNullOrEmpty(t.RowKey));
-
-        ////        primaryTag.DownloadCount = tags.Where(t => !String.IsNullOrEmpty(t.RowKey)).Sum(t => t.DownloadCount);
-
-        ////        var op = TableOperation.Merge(primaryTag);
-
-        ////        var task = tagsTable.Table.ExecuteAsync(op);
-
-        ////        tasks.Add(task);
-        ////    }
-
-        ////    await Task.WhenAll(tasks);
-        ////}
 
         private class DownloadCount
         {
@@ -307,16 +156,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
                 this.Redirect = redirect;
             }
 
-            private RedirectEntity Redirect { get; }
-            //public string RedirectKey { get; set; }
-
-            //public string SourceAzid { get; set; }
-
-            //public string TagAzid { get; set; }
-
-            //public string TagUid { get; set; }
-
-            //public string TagVersion { get; set; }
+            public RedirectEntity Redirect { get; }
 
             public int Count { get; set; }
         }

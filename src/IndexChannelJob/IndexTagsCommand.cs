@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AppSyndication.WebJobs.Data;
+using FearTheCowboy.Iso19770;
 using Lucene.Net.Analysis.Standard;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
@@ -27,16 +28,14 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         public async Task<bool> ExecuteAsync()
         {
-            this.DidWork = false;
-
-            Console.WriteLine("Updating search service.");
-
             var txTable = this.Connection.TransactionTable();
 
             var systemInfo = txTable.GetSystemInfo();
 
             if (!systemInfo.LastIndexed.HasValue || systemInfo.LastIndexed < systemInfo.LastUpdatedStorage || systemInfo.LastIndexed < systemInfo.LastRecalculatedDownloadCount)
             {
+                var now = DateTime.UtcNow;
+
                 var tags = this.Connection
                     .TagTable()
                     .GetAllTags()
@@ -47,24 +46,83 @@ namespace AppSyndication.WebJobs.IndexChannelJob
                     .GetAllRedirects()
                     .ToList();
 
-                Console.WriteLine("Updating search index to complete.");
+                await this.UpdateTagIndex(tags, now);
 
                 this.UpdateSearchIndex(tags, redirects);
 
-                var change = txTable.Batch();
+                systemInfo.LastIndexed = now;
 
-                systemInfo.LastIndexed = DateTime.UtcNow;
-                change.CreateOrMerge(systemInfo);
-
-                await change.WhenAll();
+                await txTable.Update(systemInfo);
 
                 this.DidWork = true;
-
-                Console.WriteLine("Search service updated.");
             }
 
             return this.DidWork;
         }
+
+
+        private async Task UpdateTagIndex(IEnumerable<TagEntity> tags, DateTime now)
+        {
+            var tagsByChannel = tags.GroupBy(t => t.Channel);
+            var version = now.ToString("yyyy.MMdd.HHmm.ss");
+
+            foreach (var tagsInChannel in tagsByChannel)
+            {
+                var channel = tagsInChannel.Key;
+
+                var swidtagX = new SoftwareIdentity();
+                swidtagX.Name = "AppSyndication Index" + (channel.Length > 1 ? " for Channel: " + channel.Substring(1) : String.Empty);
+                swidtagX.TagId = $"http://tags.appsyndication.com/tag/{channel}/?v{version}";
+                swidtagX.Version = version;
+
+                var swidtagJ = new SoftwareIdentity();
+                swidtagJ.Name = "AppSyndication Index" + (channel.Length > 1 ? " for Channel: " + channel.Substring(1) : String.Empty);
+                swidtagJ.TagId = $"http://tags.appsyndication.com/tag/{channel}/?v{version}";
+                swidtagJ.Version = version;
+
+                foreach (var tag in tagsInChannel.Where(t => t.Primary))
+                {
+                    var uriJ = new Uri(tag.JsonBlobName, UriKind.Relative);
+                    swidtagJ.AddLink(uriJ, "package");
+
+                    var uriX = new Uri(tag.XmlBlobName, UriKind.Relative);
+                    swidtagX.AddLink(uriX, "package");
+                }
+
+                await this.WriteIndexTags(channel, swidtagJ, swidtagX);
+            }
+        }
+
+        private async Task WriteIndexTags(string channel, SoftwareIdentity indexJsonTag, SoftwareIdentity indexXmlTag)
+        {
+            var tagContainer = await this.Connection.TagContainerAsync();
+
+            var blobJson = tagContainer.GetBlockBlobReference(channel + "/index.json.swidtag");
+
+            var blobXml = tagContainer.GetBlockBlobReference(channel + "/index.xml.swidtag");
+
+            // TODO: make this work
+            //var json = indexJsonTag.SwidTagJson;
+
+            var xml = indexXmlTag.SwidTagXml;
+
+            await Task.WhenAll(
+                //blobJson.UploadTextAsync(json),
+                blobXml.UploadTextAsync(xml)
+                );
+
+            blobJson.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
+            blobXml.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
+
+            blobJson.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd;
+            blobXml.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml;
+
+            await Task.WhenAll(
+                //blobJson.SetPropertiesAsync(),
+                blobXml.SetPropertiesAsync()
+                );
+        }
+
 
         private static readonly string[] _fields = new[] { "alias", "name", "description", "keywords" };
 
@@ -186,15 +244,17 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private static Document CreateDocumentForPrimaryTag(TagEntity tag)
         {
+            var channel = (tag.Channel.Length > 1) ? tag.Channel : String.Empty;
+
             var keywords = String.Join(",", tag.Keywords ?? new string[0]);
 
             var document = new Document();
             document.Add(new Field("_type", "tag", Field.Store.NO, Field.Index.NOT_ANALYZED));
             document.Add(new Field("tag_uid", tag.Uid, Field.Store.YES, Field.Index.NOT_ANALYZED));
-            document.Add(new Field("tag_channel", String.Empty, Field.Store.YES, Field.Index.NOT_ANALYZED));
+            document.Add(new Field("tag_channel", channel, Field.Store.YES, Field.Index.NOT_ANALYZED));
             document.Add(new Field("tag_alias", tag.Alias ?? String.Empty, Field.Store.YES, Field.Index.NOT_ANALYZED));
             document.Add(new Field("tag_title", tag.Name, Field.Store.YES, Field.Index.ANALYZED));
-            document.Add(new Field("tag_description", tag.Description, Field.Store.YES, Field.Index.ANALYZED));
+            document.Add(new Field("tag_description", tag.Description ?? String.Empty, Field.Store.YES, Field.Index.ANALYZED));
             document.Add(new Field("tag_keywords", keywords, Field.Store.YES, Field.Index.ANALYZED));
             document.Add(new Field("tag_version", tag.Version, Field.Store.YES, Field.Index.NO));
             document.Add(new Field("tag_updated", tag.Stored.ToString("u"), Field.Store.YES, Field.Index.NO));

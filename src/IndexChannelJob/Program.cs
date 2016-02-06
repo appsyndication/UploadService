@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Threading.Tasks;
 using AppSyndication.WebJobs.Data;
 using Microsoft.Azure.WebJobs;
@@ -8,20 +9,20 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 {
     public class Program
     {
-        public static Connection Connection { get; set; }
+        //public static Connection Connection { get; set; }
+        public static string _connectionString;
 
         public static void Main(string[] args)
         {
-            if (Connection == null)
-            {
-                var connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
-                Connection = new Connection(connectionString);
-            }
+            //if (Connection == null)
+            //{
+                _connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
+            //}
 
             var config = new JobHostConfiguration()
             {
-                DashboardConnectionString = Connection.StorageConnectionString,
-                StorageConnectionString = Connection.StorageConnectionString,
+                DashboardConnectionString = _connectionString,
+                StorageConnectionString = _connectionString,
             };
 
             if (config.IsDevelopment)
@@ -35,28 +36,20 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         public static async Task Index([QueueTrigger(StorageName.IndexQueue)] IndexChannelMessage message, TextWriter log)
         {
-            log.WriteLine("Indexing started");
+            var connection = new Connection(_connectionString);
 
-            await RecalculateDownloadCounts(message.Channel, log);
+            try
+            {
+                var recalc = new RecalculateDownloadCountsCommand(connection);
+                await recalc.ExecuteAsync();
 
-            var index = new IndexTagsCommand(Connection);
-            await index.ExecuteAsync();
-        }
-
-        public static async Task<bool> RecalculateDownloadCounts(string channel, TextWriter log)
-        {
-            log.WriteLine("Recalculating download counts");
-
-            var command = new RecalculateDownloadCountsCommand(Connection);
-            await command.ExecuteAsync();
-
-            //if (command.DidWork)
-            //{
-            //    await this.QueueTagSource(ProcessActionType.Index, null);
-            //}
-
-            return true;
-
+                var index = new IndexTagsCommand(connection);
+                await index.ExecuteAsync();
+            }
+            catch (IndexChannelJobException e)
+            {
+                await log.WriteLineAsync($"Failed to store message for {message.Channel} message: {e.Message}");
+            }
         }
     }
 }
