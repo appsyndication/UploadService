@@ -64,12 +64,12 @@ nuget restore
 
 :: 1. MSBuild
 
-call "%MSBUILD_PATH%" /p:PublishFolder="%DEPLOYMENT_TEMP%\Build"
+call "%MSBUILD_PATH%" /p:DeployOnBuild=true /p:Configuration=Release /p:PublishFolder="%DEPLOYMENT_TEMP%\publish"
 IF !ERRORLEVEL! NEQ 0 goto error
 
 :: 2. KuduSync
 IF /I "%IN_PLACE_DEPLOYMENT%" NEQ "1" (
-  call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%\Build" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
+  call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%\publish" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
   IF !ERRORLEVEL! NEQ 0 goto error
 )
 

@@ -5,37 +5,45 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using System.Web.Configuration;
 using System.Web.Http;
 using AppSyndication.WebJobs.Data;
 
-namespace Web.Controllers
+namespace Web
 {
-    //[Authorize]
-    public class ValuesController : ApiController
+    [Route("upload")]
+    public class UploadController : ApiController
     {
-        // GET api/values
-        public IEnumerable<string> Get()
+        // GET upload
+        public dynamic Get()
         {
-            return new string[] { "value1", "value2" };
+            var user = this.User as ClaimsPrincipal;
+
+            var claims = user?.Identities.FirstOrDefault()?.Claims;
+
+            var data = claims?.Select(c => new { c.Type, c.Value });
+
+            return data;
         }
 
-        // GET api/values/5
-        public string Get(int id)
-        {
-            return "value";
-        }
-
-        // POST api/values
+        // POST upload
         public async Task<HttpResponseMessage> Post(string channel = null)
         {
+            var user = this.User as ClaimsPrincipal;
+
+            var claims = user?.Identities.FirstOrDefault()?.Claims;
+
+            var name = "unknown";
+
             var cs = WebConfigurationManager.ConnectionStrings["Data"];
 
             var connection = new Connection(cs.ConnectionString);
 
-            var start = await StartTagTransaction.CreateAsync(connection, channel, "robmen");
+            var start = await StartTagTransaction.CreateAsync(connection, channel, name);
+
+            //this.Request.Content.ReadAsFormDataAsync()
 
             if (this.Request.Content.IsMimeMultipartContent())
             {
