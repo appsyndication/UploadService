@@ -52,19 +52,19 @@
 
   <ItemGroup>
     <Reference Include="FearTheCowboy.Extensions.Collections, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\FearTheCowboy.Extensions.Collections.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Collections.dll</HintPath>
+      <HintPath>..\..\packages\FearTheCowboy.Extensions.Collections.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Collections.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="FearTheCowboy.Extensions.Core, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\FearTheCowboy.Extensions.Core.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Core.dll</HintPath>
+      <HintPath>..\..\packages\FearTheCowboy.Extensions.Core.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Core.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="FearTheCowboy.Extensions.Linq, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\FearTheCowboy.Extensions.Linq.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Linq.dll</HintPath>
+      <HintPath>..\..\packages\FearTheCowboy.Extensions.Linq.2.0.0-beta-10145\lib\net45\FearTheCowboy.Extensions.Linq.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="FearTheCowboy.Iso19770, Version=1.0.0.67, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\FearTheCowboy.Iso19770.1.1.0-beta-10145\lib\net45\FearTheCowboy.Iso19770.dll</HintPath>
+      <HintPath>..\..\packages\FearTheCowboy.Iso19770.1.1.0-beta-10145\lib\net45\FearTheCowboy.Iso19770.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="ICSharpCode.SharpZipLib, Version=0.86.0.518, Culture=neutral, PublicKeyToken=1b03e6acf1164f73, processorArchitecture=MSIL">
@@ -72,7 +72,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="JsonLD, Version=1.0.4.0, Culture=neutral, PublicKeyToken=2e465378e3b1a8dd, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\json-ld.net.1.0.4\lib\net40-Client\JsonLD.dll</HintPath>
+      <HintPath>..\..\packages\json-ld.net.1.0.4\lib\net40-Client\JsonLD.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Lucene.Net, Version=3.0.3.0, Culture=neutral, PublicKeyToken=85089178b9ac3181, processorArchitecture=MSIL">
@@ -120,7 +120,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="SgmlReaderDll, Version=1.8.11.0, Culture=neutral, PublicKeyToken=46b2db9ca481831b, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\SgmlReader.1.8.11\lib\4.0\SgmlReaderDll.dll</HintPath>
+      <HintPath>..\..\packages\SgmlReader.1.8.11\lib\4.0\SgmlReaderDll.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
