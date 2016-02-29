@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class RedirectTable : TableBase
     {

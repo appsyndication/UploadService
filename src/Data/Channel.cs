@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class Channel : TableEntity
     {

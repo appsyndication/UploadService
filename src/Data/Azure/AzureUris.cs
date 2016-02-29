@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace AppSyndication.WebJobs.Data.Azure
+namespace AppSyndication.UploadService.Data.Azure
 {
     public static class AzureUris
     {

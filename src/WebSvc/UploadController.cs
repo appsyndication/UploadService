@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -7,15 +6,21 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using System.Web.Configuration;
 using System.Web.Http;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 
-namespace Web
+namespace AppSyndication.UploadService.WebSvc
 {
     [Route("upload")]
     public class UploadController : ApiController
     {
+        public UploadController(UploadServiceEnvironmentConfiguration environment)
+        {
+            this.Environment = environment;
+        }
+
+        private UploadServiceEnvironmentConfiguration Environment { get; }
+
         // GET upload
         public dynamic Get()
         {
@@ -33,13 +38,14 @@ namespace Web
         {
             var user = this.User as ClaimsPrincipal;
 
-            var claims = user?.Identities.FirstOrDefault()?.Claims;
+            if (user == null)
+            {
+                return this.Request.CreateResponse(HttpStatusCode.Unauthorized);
+            }
 
-            var name = "unknown";
+            var name = user.Identity.Name;
 
-            var cs = WebConfigurationManager.ConnectionStrings["Data"];
-
-            var connection = new Connection(cs.ConnectionString);
+            var connection = new Connection(this.Environment.TableStorageConnectionString);
 
             var start = await StartTagTransaction.CreateAsync(connection, channel, name);
 

@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 using FearTheCowboy.Iso19770;
 using Lucene.Net.Analysis.Standard;
 using Lucene.Net.Documents;

@@ -8,8 +8,8 @@
     <ProjectGuid>{7E98898B-A799-4C37-974F-4FC19454CCEF}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>AppSyndication.WebJobs.Data</RootNamespace>
-    <AssemblyName>AppSyndication.WebJobs.Data</AssemblyName>
+    <RootNamespace>AppSyndication.UploadService.Data</RootNamespace>
+    <AssemblyName>AppSyndication.UploadService.Data</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ErrorReport>prompt</ErrorReport>
@@ -53,6 +53,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TagSource.cs" />
     <Compile Include="TransactionSystemInfoEntity.cs" />
+    <Compile Include="UploadServiceEnvironmentConfiguration.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -84,11 +85,13 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Spatial, Version=5.6.4.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>..\..\packages\System.Spatial.5.6.4\lib\net40\System.Spatial.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />

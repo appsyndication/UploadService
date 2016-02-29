@@ -1,22 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens;
-using System.Linq;
-using System.Security.Claims;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Web.Helpers;
 using System.Web.Http;
+using AppSyndication.UploadService.Data;
+using Autofac;
+using Autofac.Integration.WebApi;
 using IdentityModel;
 using IdentityServer3.AccessTokenValidation;
 using Microsoft.Owin;
-using Microsoft.Owin.Security;
 using Microsoft.Owin.Security.Cookies;
 using Microsoft.Owin.Security.OAuth;
 using Owin;
 
-[assembly: OwinStartup(typeof(Web.Startup))]
+//[assembly: OwinStartup(typeof(Startup))]
 
-namespace Web
+namespace AppSyndication.UploadService.WebSvc
 {
     public class Startup
     {
@@ -25,11 +26,14 @@ namespace Web
             AntiForgeryConfig.UniqueClaimTypeIdentifier = JwtClaimTypes.Subject;
             JwtSecurityTokenHandler.InboundClaimTypeMap = new Dictionary<string, string>();
 
+            var environment = new UploadServiceEnvironmentConfiguration();
+            var builder = new ContainerBuilder();
+
             // Accept access tokens from identityserver and require a scope of 'upload'.
             //
             app.UseIdentityServerBearerTokenAuthentication(new IdentityServerBearerTokenAuthenticationOptions
             {
-                Authority = "https://localhost:44301",
+                Authority = environment.IdentityServerUrl,
                 ValidationMode = ValidationMode.Local,
                 TokenProvider = new FormBasedTokenProvider(),
 
@@ -46,6 +50,14 @@ namespace Web
             config.MapHttpAttributeRoutes();
             config.Filters.Add(new AuthorizeAttribute()); // require authentication for all controllers
 
+            builder.RegisterApiControllers(Assembly.GetExecutingAssembly());
+            builder.Register(context => environment);
+
+            var container = builder.Build();
+            config.DependencyResolver = new AutofacWebApiDependencyResolver(container);
+
+            app.UseAutofacMiddleware(container);
+            app.UseAutofacWebApi(config);
             app.UseWebApi(config);
         }
     }

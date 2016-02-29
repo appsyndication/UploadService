@@ -1,5 +1,5 @@
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class StoreTagMessage
     {

@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage.Blob;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class StartTagTransaction
     {

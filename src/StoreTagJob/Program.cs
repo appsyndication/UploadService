@@ -1,28 +1,23 @@
 ﻿using System;
 using System.IO;
 using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Host;
 
 namespace AppSyndication.WebJobs.StoreTagJob
 {
     public static class Program
     {
-        //public static Connection Connection { get; set; }
-        public static string _connectionString;
+        public static UploadServiceEnvironmentConfiguration _environment;
 
         public static void Main(string[] args)
         {
-            //if (Connection == null)
-            //{
-                _connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
-            //}
+            _environment = new UploadServiceEnvironmentConfiguration();
 
             var config = new JobHostConfiguration()
             {
-                DashboardConnectionString = _connectionString,
-                StorageConnectionString = _connectionString,
+                DashboardConnectionString = _environment.TableStorageConnectionString,
+                StorageConnectionString = _environment.TableStorageConnectionString,
             };
 
             if (config.IsDevelopment)
@@ -36,8 +31,7 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
         public static async Task StoreTag([QueueTrigger(StorageName.TagTransactionQueue)] StoreTagMessage message, string channel, string transactionId, int dequeueCount, TextWriter log)
         {
-            //var connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
-            var connection = new Connection(_connectionString);
+            var connection = new Connection(_environment.TableStorageConnectionString);
 
             var tagTxTable = connection.TransactionTable();
 

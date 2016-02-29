@@ -1,8 +1,8 @@
 ﻿using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data.Azure;
+using AppSyndication.UploadService.Data.Azure;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public abstract class TableBase
     {

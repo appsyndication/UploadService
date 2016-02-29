@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AppSyndication.WebJobs.Data.Azure
+namespace AppSyndication.UploadService.Data.Azure
 {
     public static class AzureDateTime
     {

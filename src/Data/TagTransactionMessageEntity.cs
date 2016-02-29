@@ -1,8 +1,7 @@
 ﻿using System;
-using AppSyndication.WebJobs.Data.Azure;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class TagTransactionMessageEntity : TableEntity
     {

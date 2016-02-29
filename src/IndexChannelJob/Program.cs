@@ -1,28 +1,22 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Host;
 
 namespace AppSyndication.WebJobs.IndexChannelJob
 {
-    public class Program
+    public static class Program
     {
-        //public static Connection Connection { get; set; }
-        public static string _connectionString;
+        public static UploadServiceEnvironmentConfiguration _environment;
 
         public static void Main(string[] args)
         {
-            //if (Connection == null)
-            //{
-                _connectionString = AmbientConnectionStringProvider.Instance.GetConnectionString(ConnectionStringNames.Storage);
-            //}
+            _environment = new UploadServiceEnvironmentConfiguration();
 
             var config = new JobHostConfiguration()
             {
-                DashboardConnectionString = _connectionString,
-                StorageConnectionString = _connectionString,
+                DashboardConnectionString = _environment.TableStorageConnectionString,
+                StorageConnectionString = _environment.TableStorageConnectionString,
             };
 
             if (config.IsDevelopment)
@@ -36,7 +30,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         public static async Task Index([QueueTrigger(StorageName.IndexQueue)] IndexChannelMessage message, TextWriter log)
         {
-            var connection = new Connection(_connectionString);
+            var connection = new Connection(_environment.TableStorageConnectionString);
 
             try
             {

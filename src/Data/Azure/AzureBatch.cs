@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data.Azure
+namespace AppSyndication.UploadService.Data.Azure
 {
     public class AzureBatch
     {

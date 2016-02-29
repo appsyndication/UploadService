@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 using FearTheCowboy.Iso19770;
 using Microsoft.WindowsAzure.Storage.Blob;
 

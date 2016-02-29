@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using AppSyndication.WebJobs.Data;
+using AppSyndication.UploadService.Data;
 
 namespace AppSyndication.WebJobs.IndexChannelJob
 {

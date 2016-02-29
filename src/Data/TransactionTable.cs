@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage.Table;
 
-namespace AppSyndication.WebJobs.Data
+namespace AppSyndication.UploadService.Data
 {
     public class TransactionTable : TableBase
     {
