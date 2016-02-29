@@ -64,7 +64,7 @@ nuget restore
 
 :: 1. MSBuild
 
-call "%MSBUILD_PATH%" /p:DeployOnBuild=true /p:Configuration=Release /p:PublishFolder="%DEPLOYMENT_TEMP%\publish"
+call "%MSBUILD_PATH%" /p:DeployOnBuild=true /p:Configuration=Debug /p:PublishFolder="%DEPLOYMENT_TEMP%\publish"
 IF !ERRORLEVEL! NEQ 0 goto error
 
 :: 2. KuduSync
