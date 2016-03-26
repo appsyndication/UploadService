@@ -1,0 +1,30 @@
+﻿{
+  "version": "1.0.0-*",
+  "description": "IndexChannelJob Console Application",
+  "authors": [ "Rob" ],
+  "tags": [ "" ],
+  "projectUrl": "",
+  "licenseUrl": "",
+
+  "compilationOptions": {
+    "emitEntryPoint": true
+  },
+
+  "dependencies": {
+    "FearTheCowboy.Iso19770": "1.1.0-beta-10145",
+    "Microsoft.Extensions.Configuration": "1.0.0-rc1-*",
+    "Microsoft.Extensions.Configuration.EnvironmentVariables": "1.0.0-rc1-*",
+    "Microsoft.Extensions.Configuration.Json": "1.0.0-rc1-*",
+    "Lucene.Net.Store.Azure": "3.0.5553.21100",
+    "Microsoft.Azure.WebJobs": "1.1.1",
+    "AppSyndication.BackendModel.Data": "1.0.0"
+  },
+
+  "commands": {
+    "IndexChannelJob": "IndexChannelJob"
+  },
+
+  "frameworks": {
+    "dnx451": { }
+  }
+}

@@ -2,7 +2,7 @@
 
 :: ----------------------
 :: KUDU Deployment Script
-:: Version: 0.1.5
+:: Version: 0.1.13
 :: ----------------------
 
 :: Prerequisites
@@ -26,10 +26,6 @@ IF NOT DEFINED DEPLOYMENT_SOURCE (
   SET DEPLOYMENT_SOURCE=%~dp0%.
 )
 
-IF NOT DEFINED DEPLOYMENT_TEMP (
-  SET DEPLOYMENT_TEMP=%~dp0%build
-)
-
 IF NOT DEFINED DEPLOYMENT_TARGET (
   SET DEPLOYMENT_TARGET=%ARTIFACTS%\wwwroot
 )
@@ -49,39 +45,104 @@ IF NOT DEFINED KUDU_SYNC_CMD (
   IF !ERRORLEVEL! NEQ 0 goto error
 
   :: Locally just running "kuduSync" would also work
-  SET KUDU_SYNC_CMD=node "%appdata%\npm\node_modules\kuduSync\bin\kuduSync"
+  SET KUDU_SYNC_CMD=%appdata%\npm\kuduSync.cmd
+)
+IF NOT DEFINED DEPLOYMENT_TEMP (
+  SET DEPLOYMENT_TEMP=%temp%\___deployTemp%random%
+  SET CLEAN_LOCAL_DEPLOYMENT_TEMP=true
+)
+
+IF DEFINED CLEAN_LOCAL_DEPLOYMENT_TEMP (
+  IF EXIST "%DEPLOYMENT_TEMP%" rd /s /q "%DEPLOYMENT_TEMP%"
+  mkdir "%DEPLOYMENT_TEMP%"
+)
+
+IF NOT DEFINED MSBUILD_PATH (
+  SET MSBUILD_PATH=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\msbuild.exe
+)
+
+IF NOT DEFINED SCM_DNX_VERSION (
+  SET SCM_DNX_VERSION=1.0.0-rc1-final
+)
+
+IF NOT DEFINED SCM_DNU_RESTORE_OPTIONS (
+  SET SCM_DNU_RESTORE_OPTIONS=--quiet
+)
+
+IF NOT DEFINED SCM_DNU_PUBLISH_OPTIONS (
+  SET SCM_DNU_PUBLISH_OPTIONS=--quiet
 )
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Deployment
 :: ----------
 
-echo Handling Basic Web Site deployment.
+echo Handling ASP.NET 5 Web Application deployment.
 
-:: 0. Nuget
-nuget restore
+:: Remove wwwroot if deploying to default location
+IF "%DEPLOYMENT_TARGET%" == "%WEBROOT_PATH%" (
+    FOR /F %%i IN ("%DEPLOYMENT_TARGET%") DO IF "%%~nxi"=="wwwroot" (
+    SET DEPLOYMENT_TARGET=%%~dpi
+    )
+)
 
+:: Remove trailing slash if present
+IF "%DEPLOYMENT_TARGET:~-1%"=="\" (
+    SET DEPLOYMENT_TARGET=%DEPLOYMENT_TARGET:~0,-1%
+)
 
-:: 1. MSBuild
+:: 1. Set DNX Path
+set DNVM_CMD_PATH_FILE="%USERPROFILE%\.dnx\temp-set-envvars.cmd"
+set DNX_RUNTIME="%USERPROFILE%\.dnx\runtimes\dnx-clr-win-x86.%SCM_DNX_VERSION%"
 
-call "%MSBUILD_PATH%" /p:DeployOnBuild=true /p:Configuration=Debug /p:PublishFolder="%DEPLOYMENT_TEMP%\publish"
+:: 2. Install DNX
+call :ExecuteCmd PowerShell -NoProfile -NoLogo -ExecutionPolicy unrestricted -Command "[System.Threading.Thread]::CurrentThread.CurrentCulture = ''; [System.Threading.Thread]::CurrentThread.CurrentUICulture = '';$CmdPathFile='%DNVM_CMD_PATH_FILE%';& '%SCM_DNVM_PS_PATH%' " install %SCM_DNX_VERSION% -arch x86 -r CLR %SCM_DNVM_INSTALL_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
 
-:: 2. KuduSync
-IF /I "%IN_PLACE_DEPLOYMENT%" NEQ "1" (
-  call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%\publish" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
-  IF !ERRORLEVEL! NEQ 0 goto error
+
+::call %DNVM_CMD_PATH_FILE%
+::del %DNVM_CMD_PATH_FILE%
+
+:: 3. Run DNU Restore
+call %DNX_RUNTIME%\bin\dnu restore "%DEPLOYMENT_SOURCE%" %SCM_DNU_RESTORE_OPTIONS%
+IF !ERRORLEVEL! NEQ 0 goto error
+
+:: 4a. Run DNU Bundle Web
+call %DNX_RUNTIME%\bin\dnu publish "%DEPLOYMENT_SOURCE%\src\WebSvc\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%" %SCM_DNU_PUBLISH_OPTIONS%
+IF !ERRORLEVEL! NEQ 0 goto error
+
+:: 4b. Run DNU Bundle StoreTagJob WebJob
+call :ExecuteCmd dnu.cmd publish "%DEPLOYMENT_SOURCE%\src\StoreTagJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" %SCM_DNU_PUBLISH_OPTIONS%
+IF !ERRORLEVEL! NEQ 0 goto error
+
+:: 4c. Run DNU Bundle IndexChannelJob WebJob
+call :ExecuteCmd dnu.cmd publish "%DEPLOYMENT_SOURCE%\src\IndexChannelJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" %SCM_DNU_PUBLISH_OPTIONS%
+IF !ERRORLEVEL! NEQ 0 goto error
+
+:: 5. KuduSync
+call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
+IF !ERRORLEVEL! NEQ 0 goto error
 )
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Post deployment stub
-call %POST_DEPLOYMENT_ACTION%
+IF DEFINED POST_DEPLOYMENT_ACTION call "%POST_DEPLOYMENT_ACTION%"
 IF !ERRORLEVEL! NEQ 0 goto error
 
 goto end
 
+:: Execute command routine that will echo out when error
+:ExecuteCmd
+setlocal
+set _CMD_=%*
+echo Executing: %_CMD_%
+call %_CMD_%
+if "%ERRORLEVEL%" NEQ "0" echo Failed exitCode=%ERRORLEVEL%, command=%_CMD_%
+exit /b %ERRORLEVEL%
+
 :error
+endlocal
 echo An error has occurred during web site deployment.
 call :exitSetErrorLevel
 call :exitFromFunction 2>nul
@@ -93,4 +154,5 @@ exit /b 1
 ()
 
 :end
+endlocal
 echo Finished successfully.

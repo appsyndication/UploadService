@@ -1,0 +1,30 @@
+﻿{
+  "version": "1.0.0-*",
+  "description": "StoreTagJob Console Application",
+  "authors": [ "Rob Mensching" ],
+  "tags": [ "" ],
+  "projectUrl": "",
+  "licenseUrl": "",
+
+  "compilationOptions": {
+    "emitEntryPoint": true
+  },
+
+  "dependencies": {
+    "FearTheCowboy.Iso19770": "1.1.0-beta-10145",
+    "Microsoft.Extensions.Configuration": "1.0.0-rc1-*",
+    "Microsoft.Extensions.Configuration.EnvironmentVariables": "1.0.0-rc1-*",
+    "Microsoft.Extensions.Configuration.Json": "1.0.0-rc1-*",
+    "Microsoft.Azure.WebJobs": "1.1.1",
+    "WindowsAzure.Storage": "6.2.0",
+    "AppSyndication.BackendModel.Data": "1.0.0"
+  },
+
+  "commands": {
+    "StoreTagJob": "StoreTagJob"
+  },
+
+  "frameworks": {
+    "dnx451": { }
+  }
+}

@@ -1,25 +1,34 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Threading.Tasks;
-using AppSyndication.UploadService.Data;
+using AppSyndication.BackendModel.Data;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Azure.WebJobs;
 
 namespace AppSyndication.WebJobs.IndexChannelJob
 {
     public static class Program
     {
-        public static UploadServiceEnvironmentConfiguration _environment;
+        public static string Env { get; set; }
+
+        public static string TableStorageConnectionString { get; set; }
 
         public static void Main(string[] args)
         {
-            _environment = new UploadServiceEnvironmentConfiguration();
+            var settings = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json")
+                .AddJsonFile("appsettings.personal.json", optional: true)
+                .AddEnvironmentVariables()
+                .Build();
 
-            var config = new JobHostConfiguration()
-            {
-                DashboardConnectionString = _environment.TableStorageConnectionString,
-                StorageConnectionString = _environment.TableStorageConnectionString,
-            };
+            Env = (args.Length > 0) ? args[0] : settings["AppSynEnvironment"] ?? "Development";
 
-            if (config.IsDevelopment)
+            TableStorageConnectionString = settings["AppSynDataConnection"];
+
+            var config = new JobHostConfiguration(TableStorageConnectionString);
+
+            //if (config.IsDevelopment)
+            if (String.Compare("Development", Env, StringComparison.OrdinalIgnoreCase) == 0)
             {
                 config.UseDevelopmentSettings();
             }
@@ -30,7 +39,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         public static async Task Index([QueueTrigger(StorageName.IndexQueue)] IndexChannelMessage message, TextWriter log)
         {
-            var connection = new Connection(_environment.TableStorageConnectionString);
+            var connection = new Connection(TableStorageConnectionString /*_environment.TableStorageConnectionString*/);
 
             try
             {
