@@ -87,7 +87,6 @@ IF "%DEPLOYMENT_TARGET:~-1%"=="\" (
 set DNVM_CMD_PATH_FILE="%USERPROFILE%\.dnx\temp-set-envvars.cmd"
 set DNX_RUNTIME="%USERPROFILE%\.dnx\runtimes\dnx-clr-win-x86.%SCM_DNX_VERSION%"
 
-
 :: 2. Install DNX
 call :ExecuteCmd PowerShell -NoProfile -NoLogo -ExecutionPolicy unrestricted -Command "[System.Threading.Thread]::CurrentThread.CurrentCulture = ''; [System.Threading.Thread]::CurrentThread.CurrentUICulture = '';$CmdPathFile='%DNVM_CMD_PATH_FILE%';& '%SCM_DNVM_PS_PATH%' " install %SCM_DNX_VERSION% -arch x86 -r clr %SCM_DNVM_INSTALL_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
