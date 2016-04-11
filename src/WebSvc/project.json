@@ -11,7 +11,7 @@
     "Microsoft.AspNet.Server.Kestrel": "1.0.0-rc1-*",
     "Microsoft.Extensions.Logging.Console": "1.0.0-rc1-*",
     "Microsoft.Extensions.Logging.Debug": "1.0.0-rc1-*",
-    "AppSyndication.BackendModel.Data": "1.0.0"
+    "AppSyndication.BackendModel.Data": "1.0.0-build*"
   },
 
   "commands": {
