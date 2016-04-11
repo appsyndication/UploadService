@@ -2,7 +2,7 @@
 
 :: ----------------------
 :: KUDU Deployment Script
-:: Version: 0.1.13
+:: Version: 1.0.6
 :: ----------------------
 
 :: Prerequisites
@@ -57,22 +57,13 @@ IF DEFINED CLEAN_LOCAL_DEPLOYMENT_TEMP (
   mkdir "%DEPLOYMENT_TEMP%"
 )
 
-IF NOT DEFINED MSBUILD_PATH (
-  SET MSBUILD_PATH=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\msbuild.exe
-)
-
 IF NOT DEFINED SCM_DNX_VERSION (
   SET SCM_DNX_VERSION=1.0.0-rc1-final
 )
 
-IF NOT DEFINED SCM_DNU_RESTORE_OPTIONS (
-  SET SCM_DNU_RESTORE_OPTIONS=--quiet
-)
-
-IF NOT DEFINED SCM_DNU_PUBLISH_OPTIONS (
-  SET SCM_DNU_PUBLISH_OPTIONS=--quiet
-)
-
+IF DEFINED MSBUILD_PATH goto MsbuildPathDefined
+SET MSBUILD_PATH=%ProgramFiles(x86)%\MSBuild\14.0\Bin\MSBuild.exe
+:MsbuildPathDefined
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Deployment
 :: ----------
@@ -91,33 +82,34 @@ IF "%DEPLOYMENT_TARGET:~-1%"=="\" (
     SET DEPLOYMENT_TARGET=%DEPLOYMENT_TARGET:~0,-1%
 )
 
+
 :: 1. Set DNX Path
 set DNVM_CMD_PATH_FILE="%USERPROFILE%\.dnx\temp-set-envvars.cmd"
 set DNX_RUNTIME="%USERPROFILE%\.dnx\runtimes\dnx-clr-win-x86.%SCM_DNX_VERSION%"
 
+
 :: 2. Install DNX
-call :ExecuteCmd PowerShell -NoProfile -NoLogo -ExecutionPolicy unrestricted -Command "[System.Threading.Thread]::CurrentThread.CurrentCulture = ''; [System.Threading.Thread]::CurrentThread.CurrentUICulture = '';$CmdPathFile='%DNVM_CMD_PATH_FILE%';& '%SCM_DNVM_PS_PATH%' " install %SCM_DNX_VERSION% -arch x86 -r CLR %SCM_DNVM_INSTALL_OPTIONS%
+call :ExecuteCmd PowerShell -NoProfile -NoLogo -ExecutionPolicy unrestricted -Command "[System.Threading.Thread]::CurrentThread.CurrentCulture = ''; [System.Threading.Thread]::CurrentThread.CurrentUICulture = '';$CmdPathFile='%DNVM_CMD_PATH_FILE%';& '%SCM_DNVM_PS_PATH%' " install %SCM_DNX_VERSION% -arch x86 -r clr %SCM_DNVM_INSTALL_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
 
-
-::call %DNVM_CMD_PATH_FILE%
-::del %DNVM_CMD_PATH_FILE%
 
 :: 3. Run DNU Restore
 call %DNX_RUNTIME%\bin\dnu restore "%DEPLOYMENT_SOURCE%" %SCM_DNU_RESTORE_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
 
+
 :: 4a. Run DNU Bundle Web
-call %DNX_RUNTIME%\bin\dnu publish "%DEPLOYMENT_SOURCE%\src\WebSvc\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%" %SCM_DNU_PUBLISH_OPTIONS%
+call %DNX_RUNTIME%\bin\dnu publish ".\src\WebSvc\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%" %SCM_DNU_PUBLISH_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
 
 :: 4b. Run DNU Bundle StoreTagJob WebJob
-call :ExecuteCmd dnu.cmd publish "%DEPLOYMENT_SOURCE%\src\StoreTagJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" %SCM_DNU_PUBLISH_OPTIONS%
+call %DNX_RUNTIME%\bin\dnu publish ".\src\StoreTagJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" %SCM_DNU_PUBLISH_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
 
 :: 4c. Run DNU Bundle IndexChannelJob WebJob
-call :ExecuteCmd dnu.cmd publish "%DEPLOYMENT_SOURCE%\src\IndexChannelJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" %SCM_DNU_PUBLISH_OPTIONS%
+call %DNX_RUNTIME%\bin\dnu publish ".\src\IndexChannelJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" %SCM_DNU_PUBLISH_OPTIONS%
 IF !ERRORLEVEL! NEQ 0 goto error
+
 
 :: 5. KuduSync
 call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
@@ -136,7 +128,6 @@ goto end
 :ExecuteCmd
 setlocal
 set _CMD_=%*
-echo Executing: %_CMD_%
 call %_CMD_%
 if "%ERRORLEVEL%" NEQ "0" echo Failed exitCode=%ERRORLEVEL%, command=%_CMD_%
 exit /b %ERRORLEVEL%
