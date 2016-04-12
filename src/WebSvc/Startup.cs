@@ -1,11 +1,14 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using AppSyndication.BackendModel.Data;
+using Microsoft.AspNet.Authentication.Cookies;
 using Microsoft.AspNet.Builder;
 using Microsoft.AspNet.Hosting;
 using Microsoft.AspNet.Http;
-using Microsoft.AspNet.Authentication.Cookies;
+using Microsoft.AspNet.Diagnostics;
+using Microsoft.AspNet.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,12 +40,35 @@ namespace WebSvc
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, ILoggerFactory loggerFactory)
         {
+            Trace.Listeners.Add(new AzureApplicationLogTraceListener());
             loggerFactory.AddConsole(this.Configuration.GetSection("Logging"));
             loggerFactory.AddDebug(LogLevel.Verbose);
 
             JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
             app.UseIISPlatformHandler();
+
+            // app.UseDeveloperExceptionPage();
+
+            // Configure the error handler to show an error page.
+            app.UseExceptionHandler(errorApp =>
+            {
+                errorApp.Run(async context =>
+                {
+                    context.Response.StatusCode = 500;
+                    context.Response.ContentType = "text/plain";
+
+                    var error = context.Features.Get<IExceptionHandlerFeature>();
+                    if (error != null)
+                    {
+                        // This error would not normally be exposed to the client
+                        await context.Response.WriteAsync("Error: " + error.Error.Message + "\r\n");
+                        Trace.TraceError(error.Error.Message);
+                    }
+
+                    await context.Response.WriteAsync(new string(' ', 512)); // Padding for IE
+                });
+            });
 
             app.UseCookieAuthentication(options =>
             {
