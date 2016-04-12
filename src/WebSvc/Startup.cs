@@ -61,9 +61,10 @@ namespace WebSvc
                     var error = context.Features.Get<IExceptionHandlerFeature>();
                     if (error != null)
                     {
-                        // This error would not normally be exposed to the client
-                        await context.Response.WriteAsync("Error: " + error.Error.Message + "\r\n");
                         Trace.TraceError(error.Error.Message);
+
+                        // This error information would not normally be exposed to the client
+                        await context.Response.WriteAsync("Error: " + error.Error.Message + "\r\n");
                     }
 
                     await context.Response.WriteAsync(new string(' ', 512)); // Padding for IE
