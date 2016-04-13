@@ -113,9 +113,10 @@ namespace WebSvc
                 options.TokenValidationParameters.NameClaimType = "sub";
             });
 
-
             app.Use(async (context, next) =>
             {
+                Trace.TraceInformation($"{context.Request.Method} {context.Request.Path}");
+
                 if (context.Request.Path.Equals("/favicon.ico"))
                 {
                     return;
