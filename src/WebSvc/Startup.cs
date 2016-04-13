@@ -53,8 +53,12 @@ namespace WebSvc
             // Configure the error handler to show an error page.
             app.UseExceptionHandler(errorApp =>
             {
+                Trace.TraceInformation("Planning to run error app...");
+
                 errorApp.Run(async context =>
                 {
+                    Trace.TraceInformation("Running error app...");
+
                     context.Response.StatusCode = 500;
                     context.Response.ContentType = "text/plain";
 
