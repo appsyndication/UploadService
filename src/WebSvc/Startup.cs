@@ -113,7 +113,7 @@ namespace WebSvc
                 options.TokenValidationParameters.NameClaimType = "sub";
             });
 
-            app.Use(async (context, next) =>
+            app.Run(async context =>
             {
                 Trace.TraceInformation($"{context.Request.Method} {context.Request.Path}");
 
@@ -180,13 +180,19 @@ namespace WebSvc
                 }
                 else
                 {
-                    var identity = context.User.Identities.FirstOrDefault(i => i.IsAuthenticated);
+                    Trace.TraceInformation("Trying to get identity...");
+
+                    var identity = context.User?.Identities?.FirstOrDefault(i => i.IsAuthenticated);
                     if (identity == null)
                     {
+                        Trace.TraceInformation("No identity, user needs to be logged in...");
+
                         //await context.Authentication.ChallengeAsync(OpenIdConnectDefaults.AuthenticationScheme, new AuthenticationProperties { RedirectUri = context.Request.Path.Value });
                         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                         return;
                     }
+
+                    Trace.TraceInformation("Found identity, user must be logged in...");
 
                     var text = $"<html><head><title>Claims</title></head><body><h1>NameType: {identity.NameClaimType} Name: {identity.Name}</h1><table style='border: 1px solid black'><th><td>Issue</td><td>Type</td><td>Value</td></th>";
                     foreach (var claim in identity.Claims)
@@ -199,8 +205,6 @@ namespace WebSvc
 
                     return;
                 }
-
-                await next();
             });
         }
 
