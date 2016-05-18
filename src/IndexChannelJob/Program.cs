@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using AppSyndication.BackendModel.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Azure.WebJobs;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AppSyndication.WebJobs.IndexChannelJob
 {
@@ -12,6 +13,8 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         public static string Env { get; set; }
 
         public static string TableStorageConnectionString { get; set; }
+
+        private static IServiceProvider _provider;
 
         public static void Main(string[] args)
         {
@@ -33,25 +36,33 @@ namespace AppSyndication.WebJobs.IndexChannelJob
                 config.UseDevelopmentSettings();
             }
 
+            var services = new ServiceCollection();
+            services.AddTagStorage(TableStorageConnectionString);
+            services.AddTransient<IndexTagsCommand>();
+            services.AddTransient<RecalculateDownloadCountsCommand>();
+
+            _provider = services.BuildServiceProvider();
+
             var host = new JobHost(config);
             host.RunAndBlock();
         }
 
         public static async Task Index([QueueTrigger(StorageName.IndexQueue)] IndexChannelMessage message, TextWriter log)
         {
-            var connection = new Connection(TableStorageConnectionString /*_environment.TableStorageConnectionString*/);
-
-            try
+            using (var scope = _provider.GetRequiredService<IServiceScopeFactory>().CreateScope())
             {
-                var recalc = new RecalculateDownloadCountsCommand(connection);
-                await recalc.ExecuteAsync();
+                try
+                {
+                    var recalc = scope.ServiceProvider.GetService<RecalculateDownloadCountsCommand>();
+                    await recalc.ExecuteAsync();
 
-                var index = new IndexTagsCommand(connection);
-                await index.ExecuteAsync();
-            }
-            catch (IndexChannelJobException e)
-            {
-                await log.WriteLineAsync($"Failed to store message for {message.Channel} message: {e.Message}");
+                    var index = scope.ServiceProvider.GetService<IndexTagsCommand>();
+                    await index.ExecuteAsync();
+                }
+                catch (IndexChannelJobException e)
+                {
+                    await log.WriteLineAsync($"Failed to store message for {message.Channel} message: {e.Message}");
+                }
             }
         }
     }

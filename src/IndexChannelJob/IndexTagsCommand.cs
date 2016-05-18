@@ -17,34 +17,42 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 {
     public class IndexTagsCommand
     {
-        public IndexTagsCommand(Connection connection)
+        public IndexTagsCommand(ITagTransactionTable txTable, ITagTransactionBlobContainer transactionContainer, ITagTable tagTable, ITagBlobContainer blobContainer, IRedirectTable redirectTable)
         {
-            this.Connection = connection;
+            this.TagTransactionTable = txTable;
+
+            this.TagTransactionContainer = transactionContainer;
+
+            this.TagTable = tagTable;
+
+            this.TagBlobContainer = blobContainer;
+
+            this.RedirectTable = redirectTable;
         }
+
+        private ITagTransactionTable TagTransactionTable { get; }
+
+        private ITagTransactionBlobContainer TagTransactionContainer { get; }
+
+        private ITagTable TagTable { get; }
+
+        private ITagBlobContainer TagBlobContainer { get; }
+
+        private IRedirectTable RedirectTable { get; }
 
         public bool DidWork { get; private set; }
 
-        private Connection Connection { get; }
-
         public async Task<bool> ExecuteAsync()
         {
-            var txTable = this.Connection.TransactionTable();
-
-            var systemInfo = txTable.GetSystemInfo();
+            var systemInfo = this.TagTransactionTable.GetSystemInfo();
 
             if (!systemInfo.LastIndexed.HasValue || systemInfo.LastIndexed < systemInfo.LastUpdatedStorage || systemInfo.LastIndexed < systemInfo.LastRecalculatedDownloadCount)
             {
                 var now = DateTime.UtcNow;
 
-                var tags = this.Connection
-                    .TagTable()
-                    .GetAllTags()
-                    .ToList();
+                var tags = this.TagTable.GetAllTags().ToList();
 
-                var redirects = this.Connection
-                    .RedirectTable()
-                    .GetAllRedirects()
-                    .ToList();
+                var redirects = this.RedirectTable.GetAllRedirects().ToList();
 
                 await this.UpdateTagIndex(tags, now);
 
@@ -52,7 +60,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
                 systemInfo.LastIndexed = now;
 
-                await txTable.Update(systemInfo);
+                await this.TagTransactionTable.Update(systemInfo);
 
                 this.DidWork = true;
             }
@@ -63,30 +71,39 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private async Task UpdateTagIndex(IEnumerable<TagEntity> tags, DateTime now)
         {
+            var tagContainerName = this.TagBlobContainer.Name;
+
             var tagsByChannel = tags.GroupBy(t => t.Channel);
             var version = now.ToString("yyyy.MMdd.HHmm.ss");
 
             foreach (var tagsInChannel in tagsByChannel)
             {
                 var channel = tagsInChannel.Key;
-
-                var swidtagX = new SoftwareIdentity();
-                swidtagX.Name = "AppSyndication Index" + (channel.Length > 1 ? " for Channel: " + channel.Substring(1) : String.Empty);
-                swidtagX.TagId = $"http://tags.appsyndication.com/tag/{channel}/?v{version}";
-                swidtagX.Version = version;
+                var tagId = channel.Length > 1 ? $"http://www.appsyndication.com/{channel}/tags/?v{version}" : $"http://www.appsyndication.com/tags/?v{version}";
 
                 var swidtagJ = new SoftwareIdentity();
                 swidtagJ.Name = "AppSyndication Index" + (channel.Length > 1 ? " for Channel: " + channel.Substring(1) : String.Empty);
-                swidtagJ.TagId = $"http://tags.appsyndication.com/tag/{channel}/?v{version}";
+                swidtagJ.TagId = tagId + "&format=json";
                 swidtagJ.Version = version;
+
+                var swidtagX = new SoftwareIdentity();
+                swidtagX.Name = "AppSyndication Index" + (channel.Length > 1 ? " for Channel: " + channel.Substring(1) : String.Empty);
+                swidtagX.TagId = tagId + "&format=xml";
+                swidtagX.Version = version;
 
                 foreach (var tag in tagsInChannel.Where(t => t.Primary))
                 {
                     var uriJ = new Uri(tag.JsonBlobName, UriKind.Relative);
-                    swidtagJ.AddLink(uriJ, "package");
+                    var l = swidtagJ.AddLink(uriJ, "package");
+                    l.Name = tag.Name;
+                    l.Version = tag.Version;
+                    l.Media = tag.Media;
 
                     var uriX = new Uri(tag.XmlBlobName, UriKind.Relative);
-                    swidtagX.AddLink(uriX, "package");
+                    l = swidtagX.AddLink(uriX, "package");
+                    l.Name = tag.Name;
+                    l.Version = tag.Version;
+                    l.Media = tag.Media;
                 }
 
                 await this.WriteIndexTags(channel, swidtagJ, swidtagX);
@@ -95,32 +112,41 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private async Task WriteIndexTags(string channel, SoftwareIdentity indexJsonTag, SoftwareIdentity indexXmlTag)
         {
-            var tagContainer = await this.Connection.TagContainerAsync();
-
-            var blobJson = tagContainer.GetBlockBlobReference(channel + "/index.json.swidtag");
-
-            var blobXml = tagContainer.GetBlockBlobReference(channel + "/index.xml.swidtag");
-
             // TODO: make this work
             //var json = indexJsonTag.SwidTagJson;
 
             var xml = indexXmlTag.SwidTagXml;
 
             await Task.WhenAll(
-                //blobJson.UploadTextAsync(json),
-                blobXml.UploadTextAsync(xml)
+                //this.TagBlobContainer.UploadChannelIndexJsonTag(channel, json),
+                this.TagBlobContainer.UploadChannelIndexJsonTag(channel, xml)
                 );
+            //var tagContainer = await this.Connection.TagContainerAsync();
 
-            blobJson.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
-            blobXml.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
+            //var blobJson = tagContainer.GetBlockBlobReference(channel + "/index.json.swidtag");
 
-            blobJson.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd;
-            blobXml.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml;
+            //var blobXml = tagContainer.GetBlockBlobReference(channel + "/index.xml.swidtag");
 
-            await Task.WhenAll(
-                //blobJson.SetPropertiesAsync(),
-                blobXml.SetPropertiesAsync()
-                );
+            //// TODO: make this work
+            ////var json = indexJsonTag.SwidTagJson;
+
+            //var xml = indexXmlTag.SwidTagXml;
+
+            //await Task.WhenAll(
+            //    //blobJson.UploadTextAsync(json),
+            //    blobXml.UploadTextAsync(xml)
+            //    );
+
+            //blobJson.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
+            //blobXml.Properties.CacheControl = "public, max-age=300"; // cache for 5 minutes.
+
+            //blobJson.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd;
+            //blobXml.Properties.ContentType = FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml;
+
+            //await Task.WhenAll(
+            //    //blobJson.SetPropertiesAsync(),
+            //    blobXml.SetPropertiesAsync()
+            //    );
         }
 
 
@@ -128,7 +154,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
         private void UpdateSearchIndex(IEnumerable<TagEntity> tags, IEnumerable<RedirectEntity> redirects)
         {
-            var storage = this.Connection.ConnectToIndexStorage();
+            var storage = this.TagBlobContainer.StorageAccount();
 
 #if false
             var search = "wix";

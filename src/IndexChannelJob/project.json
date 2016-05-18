@@ -17,7 +17,8 @@
     "Microsoft.Extensions.Configuration.Json": "1.0.0-rc1-*",
     "Lucene.Net.Store.Azure": "3.0.5553.21100",
     "Microsoft.Azure.WebJobs": "1.1.1",
-    "AppSyndication.BackendModel.Data": "1.0.0-build*"
+    "AppSyndication.BackendModel.Data": "1.0.0-build*",
+    "Microsoft.Extensions.DependencyInjection": "1.0.0-rc1-final"
   },
 
   "commands": {

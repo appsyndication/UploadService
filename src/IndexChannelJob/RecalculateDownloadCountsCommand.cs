@@ -9,12 +9,28 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 {
     public class RecalculateDownloadCountsCommand
     {
-        public RecalculateDownloadCountsCommand(Connection connection)
+        public RecalculateDownloadCountsCommand(ITagTransactionTable txTable, ITagTable tagTable, IRedirectTable redirectTable, IDownloadTable downloadTable)
         {
-            this.Connection = connection;
+            this.TagTransactionTable = txTable;
+
+            this.TagTable = tagTable;
+
+            this.RedirectTable = redirectTable;
+
+            this.DownloadTable = downloadTable;
         }
 
-        private Connection Connection { get; }
+        private ITagTransactionTable TagTransactionTable { get; }
+
+        private ITagTransactionBlobContainer TagTransactionContainer { get; }
+
+        private ITagTable TagTable { get; }
+
+        private ITagBlobContainer TagBlobContainer { get; }
+
+        private IRedirectTable RedirectTable { get; }
+
+        private IDownloadTable DownloadTable { get; }
 
         public bool DidWork { get; private set; }
 
@@ -22,29 +38,21 @@ namespace AppSyndication.WebJobs.IndexChannelJob
         {
             this.DidWork = false;
 
-            var txTable = this.Connection.TransactionTable();
+            var txInfo = this.TagTransactionTable.GetSystemInfo();
 
-            var txInfo = txTable.GetSystemInfo();
-
-            var downloadTable = this.Connection.DownloadTable();
-
-            var downloads = downloadTable.GetDownloadsSince(txInfo.LastRecalculatedDownloadCount).ToList();
-
-            var redirectTable = this.Connection.RedirectTable();
+            var downloads = this.DownloadTable.GetDownloadsSince(txInfo.LastRecalculatedDownloadCount).ToList();
 
             DateTime lastTime;
 
-            var updates = GatherDownloadCounts(redirectTable, downloads, out lastTime).ToList();
+            var updates = this.GatherDownloadCounts(downloads, out lastTime).ToList();
 
             if (updates.Any())
             {
-                var tagTable = this.Connection.TagTable();
-
-                await UpdateTagDownloadCounts(tagTable, redirectTable, updates, lastTime);
+                await UpdateTagDownloadCounts(updates, lastTime);
 
                 txInfo.LastRecalculatedDownloadCount = lastTime;
 
-                await txTable.Update(txInfo);
+                await this.TagTransactionTable.Update(txInfo);
 
                 this.DidWork = true;
             }
@@ -52,7 +60,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             return this.DidWork;
         }
 
-        private static IEnumerable<DownloadCount> GatherDownloadCounts(RedirectTable redirectsTable, IEnumerable<DownloadEntity> downloads, out DateTime lastTime)
+        private IEnumerable<DownloadCount> GatherDownloadCounts(IEnumerable<DownloadEntity> downloads, out DateTime lastTime)
         {
             var countUpdates = new Dictionary<string, DownloadCount>();
 
@@ -60,7 +68,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
             foreach (var download in downloads)
             {
-                var redirect = redirectsTable.GetRedirect(download.DownloadKey);
+                var redirect = this.RedirectTable.GetRedirect(download.DownloadKey);
 
                 if (redirect != null)
                 {
@@ -87,7 +95,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             return countUpdates.Values;
         }
 
-        private static async Task UpdateTagDownloadCounts(TagTable tagTable, RedirectTable redirectTable, IEnumerable<DownloadCount> updates, DateTime lastTime)
+        private async Task UpdateTagDownloadCounts(IEnumerable<DownloadCount> updates, DateTime lastTime)
         {
             var countedRedirect = new List<RedirectEntity>();
             var foundTags = new Dictionary<string, TagEntity>();
@@ -100,7 +108,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
                 if (!foundTags.TryGetValue(tagUid, out tag))
                 {
-                    tag = await tagTable.GetTagAsync(dc.Redirect.TagPartitionKey, dc.Redirect.TagRowKey);
+                    tag = await this.TagTable.GetTagAsync(dc.Redirect.TagPartitionKey, dc.Redirect.TagRowKey);
 
                     if (tag == null)
                     {
@@ -116,7 +124,7 @@ namespace AppSyndication.WebJobs.IndexChannelJob
 
                 if (!foundTags.TryGetValue(tagUid, out primaryTag))
                 {
-                    primaryTag = await tagTable.GetPrimaryTagAsync(tag);
+                    primaryTag = await this.TagTable.GetPrimaryTagAsync(tag);
 
                     if (primaryTag == null)
                     {
@@ -140,12 +148,12 @@ namespace AppSyndication.WebJobs.IndexChannelJob
             // Write the changes back to table storage.
             foreach (var redirect in countedRedirect)
             {
-                await redirectTable.Update(redirect);
+                await this.RedirectTable.Update(redirect);
             }
 
             foreach (var tag in foundTags.Values)
             {
-                await tagTable.Update(tag);
+                await this.TagTable.Update(tag);
             }
         }
 

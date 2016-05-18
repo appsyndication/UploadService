@@ -11,51 +11,57 @@ namespace AppSyndication.WebJobs.StoreTagJob
 {
     public class UpdateStorageCommand
     {
-        public UpdateStorageCommand(Connection connection, TagTransactionEntity tagTransaction)
+        public UpdateStorageCommand(ITagTransactionTable txTable, ITagTransactionBlobContainer transactionContainer, ITagTable tagTable, ITagBlobContainer blobContainer, IRedirectTable redirectTable)
         {
-            this.Connection = connection;
+            this.TagTransactionTable = txTable;
 
-            this.TagTransaction = tagTransaction;
+            this.TagTransactionContainer = transactionContainer;
+
+            this.TagTable = tagTable;
+
+            this.TagBlobContainer = blobContainer;
+
+            this.RedirectTable = redirectTable;
         }
 
-        public bool DidWork { get; private set; }
+        private ITagTransactionTable TagTransactionTable { get; }
 
-        private Connection Connection { get; }
+        private ITagTransactionBlobContainer TagTransactionContainer { get; }
 
-        private TagTransactionEntity TagTransaction { get; }
+        private ITagTable TagTable { get; }
 
-        public async Task<bool> ExecuteAsync()
+        private ITagBlobContainer TagBlobContainer { get; }
+
+        private IRedirectTable RedirectTable { get; }
+
+        public async Task ExecuteAsync(TagTransactionEntity tagTx)
         {
-            var txTable = this.Connection.TransactionTable();
+            var txInfo = this.TagTransactionTable.GetSystemInfo();
 
-            var txInfo = txTable.GetSystemInfo();
-
-            var operation = this.TagTransaction.OperationValue;
+            var operation = tagTx.OperationValue;
 
             switch (operation)
             {
                 case TagTransactionOperation.Create:
-                    await this.CreateTag();
+                    await this.CreateTag(tagTx);
                     break;
 
                 default:
                     throw new NotImplementedException();
             }
 
-            this.TagTransaction.Stored = DateTime.UtcNow;
-            await txTable.CreateOrMergeAsync(this.TagTransaction);
+            tagTx.Stored = DateTime.UtcNow;
+            await this.TagTransactionTable.Update(tagTx);
 
             txInfo.LastUpdatedStorage = DateTime.UtcNow.AddMilliseconds(1);
-            await txTable.CreateOrMergeAsync(txInfo);
-
-            return this.DidWork = true;
+            await this.TagTransactionTable.CreateOrMergeAsync(txInfo);
         }
 
-        private async Task<TagEntity> CreateTag()
+        private async Task<TagEntity> CreateTag(TagTransactionEntity tagTx)
         {
-            var swidtag = await ReadTag(this.Connection, this.TagTransaction);
+            var swidtag = await this.ReadTag(tagTx);
 
-            var tagEntity = CreateTagEntityFromSoftwareIdentity(this.TagTransaction.Channel, this.TagTransaction.AliasOverride, swidtag);
+            var tagEntity = CreateTagEntityFromSoftwareIdentity(tagTx.Channel, tagTx.Alias, swidtag);
 
             var redirects = UpdateInstallationMediaLinksInSoftwareIdentityAndReturnWithRedirects(tagEntity.PartitionKey, tagEntity.RowKey, swidtag).ToList();
 
@@ -69,14 +75,12 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             return tagEntity;
         }
-        
-        private static async Task<SoftwareIdentity> ReadTag(Connection connection, TagTransactionEntity tagTx)
+
+        private async Task<SoftwareIdentity> ReadTag(TagTransactionEntity tagTx)
         {
             SoftwareIdentity swidtag;
 
-            var blob = await connection.TagTransactionUploadBlobAsync(tagTx.Channel, tagTx.Id);
-
-            var text = await blob.DownloadTextAsync();
+            var text = await this.TagTransactionContainer.DownloadTextAsync(tagTx);
 
             if (!TryLoadJsonTag(text, out swidtag))
             {
@@ -193,37 +197,40 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
         private async Task WriteRedirects(IEnumerable<RedirectEntity> redirects)
         {
-            var table = this.Connection.RedirectTable();
-
             foreach (var redirect in redirects)
             {
-                await table.Upsert(redirect);
+                await this.RedirectTable.Upsert(redirect);
             }
         }
 
         private async Task WriteBlobs(TagEntity tagEntity, SoftwareIdentity swidtag)
         {
-            var tagContainer = await this.Connection.TagContainerAsync();
+            //var tagContainer = await this.Connection.TagContainerAsync();
 
             var json = swidtag.SwidTagJson;
 
-            var jsonBlob = tagContainer.GetBlockBlobReference(tagEntity.JsonBlobName);
+            //var jsonBlob = tagContainer.GetBlockBlobReference(tagEntity.JsonBlobName);
 
             var xml = swidtag.SwidTagXml;
 
-            var xmlBlob = tagContainer.GetBlockBlobReference(tagEntity.XmlBlobName);
+            //var xmlBlob = tagContainer.GetBlockBlobReference(tagEntity.XmlBlobName);
 
+            //await Task.WhenAll(
+            //    UploadTagToBlob(tagEntity, jsonBlob, json, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd),
+            //    UploadTagToBlob(tagEntity, xmlBlob, xml, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml)
+            //    );
             await Task.WhenAll(
-                UploadTagToBlob(tagEntity, jsonBlob, json, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagJsonLd),
-                UploadTagToBlob(tagEntity, xmlBlob, xml, FearTheCowboy.Iso19770.Schema.MediaType.SwidTagXml)
+                this.TagBlobContainer.UploadJsonTag(tagEntity, json),
+                this.TagBlobContainer.UploadXmlTag(tagEntity, xml)
                 );
         }
+
 
         private async Task WriteTag(TagEntity tagEntity)
         {
             var primaryTagEntity = tagEntity.AsPrimary();
 
-            var batch = this.Connection.TagTable().Batch();
+            var batch = this.TagTable.Batch();
 
             batch.Upsert(tagEntity);
 
@@ -231,7 +238,7 @@ namespace AppSyndication.WebJobs.StoreTagJob
 
             await batch.WhenAll();
         }
-        
+
         private static async Task UploadTagToBlob(TagEntity tag, ICloudBlob blob, string content, string contentType)
         {
             blob.Properties.ContentType = contentType;

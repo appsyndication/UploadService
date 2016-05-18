@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using AppSyndication.BackendModel.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Azure.WebJobs;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AppSyndication.WebJobs.StoreTagJob
 {
@@ -14,6 +15,8 @@ namespace AppSyndication.WebJobs.StoreTagJob
         public static string Env { get; set; }
 
         public static string TableStorageConnectionString { get; set; }
+
+        private static IServiceProvider _provider;
 
         public static void Main(string[] args)
         {
@@ -35,44 +38,80 @@ namespace AppSyndication.WebJobs.StoreTagJob
                 config.UseDevelopmentSettings();
             }
 
+            var services = new ServiceCollection();
+            services.AddTagStorage(TableStorageConnectionString);
+            services.AddTransient<UpdateStorageCommand>();
+            services.AddTransient<StoreTagCommand>();
+
+            _provider = services.BuildServiceProvider();
+
             var host = new JobHost(config);
             host.RunAndBlock();
         }
 
         public static async Task StoreTag([QueueTrigger(StorageName.TagTransactionQueue)] StoreTagMessage message, string channel, string transactionId, int dequeueCount, TextWriter log)
         {
-            var connection = new Connection(TableStorageConnectionString /*_environment.TableStorageConnectionString*/);
-
-            var tagTxTable = connection.TransactionTable();
-
-            var tagTx = await tagTxTable.GetTagTransactionAsync(channel, transactionId);
-
-            if (tagTx == null)
-            {
-                await log.WriteLineAsync($"Could not find transaction id: {transactionId} in channel: {channel}");
-                return;
-            }
-
-            try
-            {
-                var update = new UpdateStorageCommand(connection, tagTx);
-                await update.ExecuteAsync();
-
-                if (update.DidWork)
-                {
-                    await connection.QueueIndexMessageAsync(new IndexChannelMessage(channel));
-                }
-            }
-            catch (StoreTagJobException e)
+            using (var scope = _provider.GetRequiredService<IServiceScopeFactory>().CreateScope())
             {
                 try
                 {
-                    await tagTxTable.AddTagTransactionErrorMessageAsync(tagTx, e.Message);
+                    var command = scope.ServiceProvider.GetService<StoreTagCommand>();
+
+                    await command.ExecuteAsync(channel, transactionId);
                 }
-                catch (Exception exception)
+                catch (StoreTagJobException e)
                 {
-                    await log.WriteLineAsync($"Failed to store message for {channel}/{transactionId}. Original message: {e.Message}. Exception: {exception.ToString()}");
+                    try
+                    {
+                        if (!e.OnlyLog)
+                        {
+                            ITagTransactionTable txTable = scope.ServiceProvider.GetService<ITagTransactionTable>();
+
+                            await txTable.AddTagTransactionErrorMessageAsync(channel, transactionId, e.Message);
+                        }
+
+                        await log.WriteLineAsync(e.Message);
+                    }
+                    catch (Exception exception)
+                    {
+                        await log.WriteLineAsync($"Failed to store message for {channel}/{transactionId}. Original message: {e.Message}. Exception: {exception.ToString()}");
+                    }
                 }
+
+
+                //var connection = new Connection(TableStorageConnectionString /*_environment.TableStorageConnectionString*/);
+
+                //var tagTxTable = connection.TransactionTable();
+
+                //var tagTx = await tagTxTable.GetTagTransactionAsync(channel, transactionId);
+
+                //if (tagTx == null)
+                //{
+                //    await log.WriteLineAsync($"Could not find transaction id: {transactionId} in channel: {channel}");
+                //    return;
+                //}
+
+                //try
+                //{
+                //    var update = new UpdateStorageCommand(connection, tagTx);
+                //    await update.ExecuteAsync();
+
+                //    if (update.DidWork)
+                //    {
+                //        await connection.QueueIndexMessageAsync(new IndexChannelMessage(channel));
+                //    }
+                //}
+                //catch (StoreTagJobException e)
+                //{
+                //    try
+                //    {
+                //        await tagTxTable.AddTagTransactionErrorMessageAsync(tagTx, e.Message);
+                //    }
+                //    catch (Exception exception)
+                //    {
+                //        await log.WriteLineAsync($"Failed to store message for {channel}/{transactionId}. Original message: {e.Message}. Exception: {exception.ToString()}");
+                //    }
+                //}
             }
         }
     }

@@ -33,8 +33,14 @@ namespace WebSvc
         // For more information on how to configure your application, visit http://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
+            var connectionString = this.Configuration["AppSynDataConnection"];
+
             services.AddAuthentication(sharedOptions =>
                 sharedOptions.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme);
+
+            services.AddTagStorage(connectionString);
+
+            services.AddTransient<UploadHandler>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -119,95 +125,11 @@ namespace WebSvc
 
             app.Run(async context =>
             {
-                Trace.TraceInformation($"{context.Request.Method} {context.Request.Path}");
-
-                if (context.Request.Path.Equals("/favicon.ico"))
+                using (var scope = context.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
                 {
-                    return;
-                }
+                    var controller = scope.ServiceProvider.GetRequiredService<UploadHandler>();
 
-                if (context.Request.Method == "POST")
-                {
-                    var user = context.User.Identities.FirstOrDefault(i => i.IsAuthenticated);
-                    if (user == null)
-                    {
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                        return;
-                    }
-
-                    var channel = context.Request.Path.Value.Substring(1); // remove the leading slash.
-
-                    if (String.IsNullOrEmpty(channel))
-                    {
-                        return;
-                    }
-
-                    var connection = new Connection(this.Configuration["AppSynDataConnection"]);
-
-                    var start = await StartTagTransaction.CreateAsync(connection, channel, user.Name);
-
-                    string redirect = null;
-
-                    if (context.Request.ContentType == "multipart/form-data")
-                    {
-                        var form = await context.Request.ReadFormAsync();
-
-                        redirect = form["redirectUri"];
-
-                        var file = form.Files[0];
-
-                        using (var stream = file.OpenReadStream())
-                        {
-                            await start.WriteToStream(stream);
-                        }
-                    }
-                    else
-                    {
-                        using (var stream = context.Request.Body)
-                        {
-                            await start.WriteToStream(stream);
-                        }
-                    }
-
-                    await start.CompleteAsync();
-
-                    if (String.IsNullOrEmpty(redirect))
-                    {
-                        context.Response.StatusCode = StatusCodes.Status201Created;
-                    }
-                    else
-                    {
-                        context.Response.Redirect(redirect);
-                    }
-
-                    return;
-                }
-                else
-                {
-                    Trace.TraceInformation("Trying to get identity...");
-
-                    var identity = context.User?.Identities?.FirstOrDefault(i => i.IsAuthenticated);
-                    if (identity == null)
-                    {
-                        Trace.TraceInformation("No identity, user needs to be logged in...");
-
-                        //await context.Authentication.ChallengeAsync(OpenIdConnectDefaults.AuthenticationScheme, new AuthenticationProperties { RedirectUri = context.Request.Path.Value });
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                        return;
-                    }
-
-                    Trace.TraceInformation("Found identity, user must be logged in...");
-
-                    var text = $"<html><head><title>Claims</title></head><body><h1>NameType: {identity.NameClaimType} Name: {identity.Name}</h1><table style='border: 1px solid black'><th><td>Issue</td><td>Type</td><td>Value</td></th>";
-                    foreach (var claim in identity.Claims)
-                    {
-                        text += $"<tr><td>{claim.Issuer}</td><td>{claim.Type}</td><td>{claim.Value}</td></tr>";
-                    }
-                    text += "</table></body></html>";
-
-                    await context.Response.WriteAsync(text);
-
-                    return;
+                    await controller.ExecuteAsync(context);
                 }
             });
         }
