@@ -1,14 +1,11 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using AppSyndication.BackendModel.Data;
-using Microsoft.AspNet.Authentication.Cookies;
-using Microsoft.AspNet.Builder;
-using Microsoft.AspNet.Hosting;
-using Microsoft.AspNet.Http;
-using Microsoft.AspNet.Diagnostics;
-using Microsoft.AspNet.Http.Features;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,10 +15,10 @@ namespace WebSvc
 {
     public class Startup
     {
-        public Startup()
+        public Startup(IHostingEnvironment hostingEnvironment)
         {
-            // Set up configuration sources.
             this.Configuration = new ConfigurationBuilder()
+                .SetBasePath(hostingEnvironment.ContentRootPath)
                 .AddJsonFile("appsettings.json")
                 .AddEnvironmentVariables()
                 .Build();
@@ -48,11 +45,9 @@ namespace WebSvc
         {
             Trace.Listeners.Add(new AzureApplicationLogTraceListener());
             loggerFactory.AddConsole(this.Configuration.GetSection("Logging"));
-            loggerFactory.AddDebug(LogLevel.Verbose);
+            loggerFactory.AddDebug(LogLevel.Debug);
 
             JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
-
-            app.UseIISPlatformHandler();
 
             // app.UseDeveloperExceptionPage();
 
@@ -81,59 +76,38 @@ namespace WebSvc
                 });
             });
 
-            app.UseCookieAuthentication(options =>
+            app.UseCookieAuthentication(new CookieAuthenticationOptions()
             {
-                options.AutomaticAuthenticate = true;
+                AutomaticAuthenticate = true
             });
 
-            //var options = new OpenIdConnectOptions
-            //{
-            //    AutomaticChallenge = true,
-            //    Authority = this.Configuration["AppSynOidcAuthority"],
-            //    ClientId = this.Configuration["AppSynOidcClientId"],
-            //    ClientSecret = this.Configuration["AppSynOidcClientSecret"],
-
-            //    ResponseType = OpenIdConnectResponseTypes.Code,
-            //    GetClaimsFromUserInfoEndpoint = true,
-
-            //    //SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme,
-            //    //PostLogoutRedirectUri = "/logout",
-            //    //CallbackPath = new PathString("/cb"),
-            //    //RequireHttpsMetadata = false,
-            //    //Events = new OpenIdConnectEvents
-            //    //{
-            //    //}
-            //    Scope = { "openid", "profile", "upload" },
-            //    TokenValidationParameters.NameClaimType = "sub",
-            //};
-            //app.UseOpenIdConnectAuthentication(options);
-
-            app.UseOpenIdConnectAuthentication(options =>
+            var options = new OpenIdConnectOptions()
             {
-                options.AutomaticChallenge = true;
+                AutomaticChallenge = true,
 
-                options.Authority = this.Configuration["AppSynOidcAuthority"];
-                options.ClientId = this.Configuration["AppSynOidcClientId"];
-                options.ClientSecret = this.Configuration["AppSynOidcClientSecret"];
+                Authority = this.Configuration["AppSynOidcAuthority"],
+                ClientId = this.Configuration["AppSynOidcClientId"],
+                ClientSecret = this.Configuration["AppSynOidcClientSecret"],
 
-                options.ResponseType = OpenIdConnectResponseTypes.Code;
-                options.GetClaimsFromUserInfoEndpoint = true;
+                ResponseType = OpenIdConnectResponseTypes.Code,
+                GetClaimsFromUserInfoEndpoint = true,
 
-                options.Scope.Add("upload");
-                options.TokenValidationParameters.NameClaimType = "sub";
-            });
+                Scope = { "openid", "profile", "upload" },
+            };
+
+            options.TokenValidationParameters.NameClaimType = "sub";
+
+            app.UseOpenIdConnectAuthentication(options);
 
             app.Run(async context =>
             {
                 using (var scope = context.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
                 {
-                    var controller = scope.ServiceProvider.GetRequiredService<UploadHandler>();
+                    var handler = scope.ServiceProvider.GetRequiredService<UploadHandler>();
 
-                    await controller.ExecuteAsync(context);
+                    await handler.ExecuteAsync(context);
                 }
             });
         }
-
-        public static void Main(string[] args) => WebApplication.Run<Startup>(args);
     }
 }

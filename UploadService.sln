@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.24720.0
+VisualStudioVersion = 14.0.25123.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "deployment", "deployment", "{D787EE43-6D6C-400B-A1AA-F40F2201148B}"
 	ProjectSection(SolutionItems) = preProject
@@ -17,12 +17,6 @@ EndProject
 Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "IndexChannelJob", "src\IndexChannelJob\IndexChannelJob.xproj", "{8E9D9FAE-5D0B-4E01-8972-74C20E9E4382}"
 EndProject
 Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "WebSvc", "src\WebSvc\WebSvc.xproj", "{F5D911F6-C878-4B87-879B-8E0BE9B1406D}"
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "Microsoft.AspNet.Authentication", "..\..\test\AppSyndicationTests\Security\src\Microsoft.AspNet.Authentication\Microsoft.AspNet.Authentication.xproj", "{2286250A-52C8-4126-9F93-B1E45F0AD078}"
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "Microsoft.AspNet.Authentication.Cookies", "..\..\test\AppSyndicationTests\Security\src\Microsoft.AspNet.Authentication.Cookies\Microsoft.AspNet.Authentication.Cookies.xproj", "{FC152CC4-054B-457E-8D91-389C5DE3C561}"
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "Microsoft.AspNet.Authentication.OpenIdConnect", "..\..\test\AppSyndicationTests\Security\src\Microsoft.AspNet.Authentication.OpenIdConnect\Microsoft.AspNet.Authentication.OpenIdConnect.xproj", "{35115D55-B69E-46D4-BB33-C9E9E6EC5E7A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -46,18 +40,6 @@ Global
 		{F5D911F6-C878-4B87-879B-8E0BE9B1406D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F5D911F6-C878-4B87-879B-8E0BE9B1406D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F5D911F6-C878-4B87-879B-8E0BE9B1406D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2286250A-52C8-4126-9F93-B1E45F0AD078}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2286250A-52C8-4126-9F93-B1E45F0AD078}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2286250A-52C8-4126-9F93-B1E45F0AD078}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2286250A-52C8-4126-9F93-B1E45F0AD078}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FC152CC4-054B-457E-8D91-389C5DE3C561}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FC152CC4-054B-457E-8D91-389C5DE3C561}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FC152CC4-054B-457E-8D91-389C5DE3C561}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FC152CC4-054B-457E-8D91-389C5DE3C561}.Release|Any CPU.Build.0 = Release|Any CPU
-		{35115D55-B69E-46D4-BB33-C9E9E6EC5E7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{35115D55-B69E-46D4-BB33-C9E9E6EC5E7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{35115D55-B69E-46D4-BB33-C9E9E6EC5E7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{35115D55-B69E-46D4-BB33-C9E9E6EC5E7A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

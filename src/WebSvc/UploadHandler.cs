@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using AppSyndication.BackendModel.Data;
-using Microsoft.AspNet.Http;
+using Microsoft.AspNetCore.Http;
 
 namespace WebSvc
 {

@@ -1,34 +1,37 @@
 ﻿{
   "version": "1.0.0-*",
-  "compilationOptions": {
-    "emitEntryPoint": true
+
+  "buildOptions": {
+    "emitEntryPoint": true,
+    "preserveCompilationContext": true
   },
 
   "dependencies": {
-    "Microsoft.AspNet.Authentication.Cookies": "1.0.0-rc1-*",
-    "Microsoft.AspNet.Authentication.OpenIdConnect": "1.0.0-rc1-*",
-    "Microsoft.AspNet.Diagnostics": "1.0.0-rc1-*",
-    "Microsoft.AspNet.IISPlatformHandler": "1.0.0-rc1-*",
-    "Microsoft.AspNet.Server.Kestrel": "1.0.0-rc1-*",
-    "Microsoft.Extensions.Logging.Console": "1.0.0-rc1-*",
-    "Microsoft.Extensions.Logging.Debug": "1.0.0-rc1-*",
-    "AppSyndication.BackendModel.Data": "1.0.0-build*"
-  },
-
-  "commands": {
-    "web": "Microsoft.AspNet.Server.Kestrel"
+    "Microsoft.AspNetCore.Authentication.Cookies": "1.0.0-rc2-final",
+    "Microsoft.AspNetCore.Authentication.OpenIdConnect": "1.0.0-rc2-final",
+    "Microsoft.AspNetCore.Diagnostics": "1.0.0-rc2-final",
+    "Microsoft.AspNetCore.Server.IISIntegration": "1.0.0-rc2-final",
+    "Microsoft.AspNetCore.Server.Kestrel": "1.0.0-rc2-final",
+    "Microsoft.Extensions.Logging.Console": "1.0.0-rc2-final",
+    "Microsoft.Extensions.Logging.Debug": "1.0.0-rc2-final",
+    "Microsoft.Extensions.Configuration.FileExtensions": "1.0.0-rc2-final",
+    "Microsoft.Extensions.Configuration.Json": "1.0.0-rc2-final",
+    "Microsoft.Extensions.Configuration.EnvironmentVariables": "1.0.0-rc2-final",
+    "AppSyndication.BackendModel.Data": "1.0.0-build-*"
   },
 
   "frameworks": {
-    "dnx451": { }
+    "net461": { }
   },
 
-  "exclude": [
-    "wwwroot",
-    "node_modules"
-  ],
-  "publishExclude": [
-    "**.user",
-    "**.vspscc"
-  ]
+  "publishOptions": {
+    "include": [
+      "appsettings.json",
+      "web.config"
+    ]
+  },
+
+  "runtimeOptions": {
+    "gcServer": true
+  }
 }

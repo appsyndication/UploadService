@@ -57,10 +57,6 @@ IF DEFINED CLEAN_LOCAL_DEPLOYMENT_TEMP (
   mkdir "%DEPLOYMENT_TEMP%"
 )
 
-IF NOT DEFINED SCM_DNX_VERSION (
-  SET SCM_DNX_VERSION=1.0.0-rc1-final
-)
-
 IF DEFINED MSBUILD_PATH goto MsbuildPathDefined
 SET MSBUILD_PATH=%ProgramFiles(x86)%\MSBuild\14.0\Bin\MSBuild.exe
 :MsbuildPathDefined
@@ -68,59 +64,45 @@ SET MSBUILD_PATH=%ProgramFiles(x86)%\MSBuild\14.0\Bin\MSBuild.exe
 :: Deployment
 :: ----------
 
-echo Handling ASP.NET 5 Web Application deployment.
+echo Handling ASP.NET Core Web Application deployment.
 
-:: Remove wwwroot if deploying to default location
-IF "%DEPLOYMENT_TARGET%" == "%WEBROOT_PATH%" (
-    FOR /F %%i IN ("%DEPLOYMENT_TARGET%") DO IF "%%~nxi"=="wwwroot" (
-    SET DEPLOYMENT_TARGET=%%~dpi
-    )
+SET USE_MSBUILD=
+
+IF DEFINED WEBSITE_SITE_NAME (
+  :: We don't need the XML docs
+  set NUGET_XMLDOC_MODE=skip
+
+  :: Make the NuGet packages go in a persisted folder instead of %USERPROFILE%, which on Azure goes in Temp space
+  set NUGET_PACKAGES=%HOME%\.nuget
+)
+:: 1. Restore nuget packages
+call :ExecuteCmd nuget.exe restore -packagesavemode nuspec
+IF !ERRORLEVEL! NEQ 0 goto error
+
+:: 2. Build and publish
+IF DEFINED USE_MSBUILD (
+  call :ExecuteCmd "%MSBUILD_PATH%" "%DEPLOYMENT_SOURCE%\undefined" /nologo /verbosity:m /t:Build /p:AutoParameterizationWebConfigConnectionStrings=false;Configuration=Release;UseSharedCompilation=false %SCM_BUILD_ARGS%
+  IF !ERRORLEVEL! NEQ 0 goto error
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\WebSvc" --output "%DEPLOYMENT_TEMP%" --configuration Release --no-build
+  IF !ERRORLEVEL! NEQ 0 goto error
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\StoreTagJob" --output "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" --configuration Release --no-build
+  IF !ERRORLEVEL! NEQ 0 goto error
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\IndexChannelJob" --output "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" --configuration Release --no-build
+  IF !ERRORLEVEL! NEQ 0 goto error
+) ELSE (
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\WebSvc" --output "%DEPLOYMENT_TEMP%" --configuration Release
+  IF !ERRORLEVEL! NEQ 0 goto error
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\StoreTagJob" --output "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" --configuration Release
+  IF !ERRORLEVEL! NEQ 0 goto error
+  call :ExecuteCmd dotnet publish "D:\home\site\repository\src\IndexChannelJob" --output "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" --configuration Release
+  IF !ERRORLEVEL! NEQ 0 goto error
 )
 
-:: Remove trailing slash if present
-IF "%DEPLOYMENT_TARGET:~-1%"=="\" (
-    SET DEPLOYMENT_TARGET=%DEPLOYMENT_TARGET:~0,-1%
-)
-
-
-:: 1. Set DNX Path
-set DNVM_CMD_PATH_FILE="%USERPROFILE%\.dnx\temp-set-envvars.cmd"
-set DNX_RUNTIME="%USERPROFILE%\.dnx\runtimes\dnx-clr-win-x86.%SCM_DNX_VERSION%"
-
-:: 2. Install DNX
-call :ExecuteCmd PowerShell -NoProfile -NoLogo -ExecutionPolicy unrestricted -Command "[System.Threading.Thread]::CurrentThread.CurrentCulture = ''; [System.Threading.Thread]::CurrentThread.CurrentUICulture = '';$CmdPathFile='%DNVM_CMD_PATH_FILE%';& '%SCM_DNVM_PS_PATH%' " install %SCM_DNX_VERSION% -arch x86 -r clr %SCM_DNVM_INSTALL_OPTIONS%
+:: 3. KuduSync
+call :ExecuteCmd "%KUDU_SYNC_CMD%" -v 50 -f "%DEPLOYMENT_TEMP%" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
 IF !ERRORLEVEL! NEQ 0 goto error
-
-
-:: 3. Run DNU Restore
-call %DNX_RUNTIME%\bin\dnu restore "%DEPLOYMENT_SOURCE%" %SCM_DNU_RESTORE_OPTIONS%
-IF !ERRORLEVEL! NEQ 0 goto error
-
-
-:: 4a. Run DNU Bundle Web
-call %DNX_RUNTIME%\bin\dnu publish ".\src\WebSvc\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%" %SCM_DNU_PUBLISH_OPTIONS%
-IF !ERRORLEVEL! NEQ 0 goto error
-
-:: 4b. Run DNU Bundle StoreTagJob WebJob
-call %DNX_RUNTIME%\bin\dnu publish ".\src\StoreTagJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\StoreTagJob" %SCM_DNU_PUBLISH_OPTIONS%
-IF !ERRORLEVEL! NEQ 0 goto error
-
-:: 4c. Run DNU Bundle IndexChannelJob WebJob
-call %DNX_RUNTIME%\bin\dnu publish ".\src\IndexChannelJob\project.json" --runtime %DNX_RUNTIME% --out "%DEPLOYMENT_TEMP%\wwwroot\App_Data\jobs\continuous\IndexChannelJob" %SCM_DNU_PUBLISH_OPTIONS%
-IF !ERRORLEVEL! NEQ 0 goto error
-
-
-:: 5. KuduSync
-call %KUDU_SYNC_CMD% -v 50 -f "%DEPLOYMENT_TEMP%" -t "%DEPLOYMENT_TARGET%" -n "%NEXT_MANIFEST_PATH%" -p "%PREVIOUS_MANIFEST_PATH%" -i ".git;.hg;.deployment;deploy.cmd"
-IF !ERRORLEVEL! NEQ 0 goto error
-)
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-:: Post deployment stub
-IF DEFINED POST_DEPLOYMENT_ACTION call "%POST_DEPLOYMENT_ACTION%"
-IF !ERRORLEVEL! NEQ 0 goto error
-
 goto end
 
 :: Execute command routine that will echo out when error
