@@ -18,6 +18,11 @@ Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "IndexChannelJob", "src\Inde
 EndProject
 Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "WebSvc", "src\WebSvc\WebSvc.xproj", "{F5D911F6-C878-4B87-879B-8E0BE9B1406D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Folder", "Solution Folder", "{1DCD3B10-4D74-4C45-AD32-247A75487735}"
+	ProjectSection(SolutionItems) = preProject
+		global.json = global.json
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
