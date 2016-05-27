@@ -3,7 +3,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using AppSyndication.BackendModel.Data;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Authentication;
 
 namespace WebSvc
 {
@@ -77,8 +79,8 @@ namespace WebSvc
                 {
                     Trace.TraceInformation("No identity, user needs to be logged in...");
 
-                    //await context.Authentication.ChallengeAsync(OpenIdConnectDefaults.AuthenticationScheme, new AuthenticationProperties { RedirectUri = context.Request.Path.Value });
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    await context.Authentication.ChallengeAsync(OpenIdConnectDefaults.AuthenticationScheme, new AuthenticationProperties { RedirectUri = context.Request.Path.Value });
+                    //context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return;
                 }
 
